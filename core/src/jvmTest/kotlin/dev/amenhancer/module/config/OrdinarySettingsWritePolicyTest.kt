@@ -116,6 +116,7 @@ class OrdinarySettingsWritePolicyTest {
                 "future_blur_enabled" to false,
                 "dual_pane_hide_played_lyrics_enabled" to false,
                 "lyrics_font_bold_enabled" to false,
+                "lyric_line_flash_enabled" to true,
                 "lyric_edge_feather_enabled" to true,
                 "cjk_karaoke_animation_enabled" to true,
                 "lyric_effects_optimization_enabled" to false,

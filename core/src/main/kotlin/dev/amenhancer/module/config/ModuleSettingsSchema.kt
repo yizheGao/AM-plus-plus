@@ -72,6 +72,7 @@ object ModuleSettingsSchema {
             default = false,
         ),
         lyricsFontBoldEnabled = values.boolean(KEY_LYRIC_FONT_BOLD, default = false),
+        lyricLineFlashEnabled = values.boolean(KEY_LYRIC_LINE_FLASH, default = true),
         lyricEdgeFeatherEnabled = values.boolean(KEY_LYRIC_EDGE_FEATHER, default = true),
         cjkKaraokeAnimationEnabled = values.boolean(
             KEY_CJK_KARAOKE_ANIMATION_ENABLED,
@@ -164,6 +165,7 @@ object ModuleSettingsSchema {
             KEY_FUTURE_BLUR to settings.futureBlurEnabled,
             KEY_DUAL_PANE_HIDE_PLAYED_LYRICS to settings.dualPaneHidePlayedLyricsEnabled,
             KEY_LYRIC_FONT_BOLD to settings.lyricsFontBoldEnabled,
+            KEY_LYRIC_LINE_FLASH to settings.lyricLineFlashEnabled,
             KEY_LYRIC_EDGE_FEATHER to settings.lyricEdgeFeatherEnabled,
             KEY_CJK_KARAOKE_ANIMATION_ENABLED to settings.cjkKaraokeAnimationEnabled,
             KEY_LYRIC_EFFECTS_OPTIMIZATION_ENABLED to settings.lyricEffectsOptimizationEnabled,
@@ -381,6 +383,7 @@ object ModuleSettingsSchema {
         KEY_FUTURE_BLUR,
         KEY_DUAL_PANE_HIDE_PLAYED_LYRICS,
         KEY_LYRIC_FONT_BOLD,
+        KEY_LYRIC_LINE_FLASH,
         KEY_LYRIC_EDGE_FEATHER,
         KEY_CJK_KARAOKE_ANIMATION_ENABLED,
         KEY_LYRIC_EFFECTS_OPTIMIZATION_ENABLED,
@@ -439,6 +442,7 @@ object ModuleSettingsSchema {
     private const val KEY_FUTURE_BLUR = "future_blur_enabled"
     private const val KEY_DUAL_PANE_HIDE_PLAYED_LYRICS = "dual_pane_hide_played_lyrics_enabled"
     private const val KEY_LYRIC_FONT_BOLD = "lyrics_font_bold_enabled"
+    private const val KEY_LYRIC_LINE_FLASH = "lyric_line_flash_enabled"
     private const val KEY_LYRIC_EDGE_FEATHER = "lyric_edge_feather_enabled"
     private const val KEY_STARTUP_PAGE_PREWARM = "startup_page_prewarm_enabled"
     private const val KEY_CJK_KARAOKE_ANIMATION_ENABLED = "cjk_karaoke_animation_enabled"

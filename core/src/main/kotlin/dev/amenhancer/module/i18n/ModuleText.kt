@@ -279,6 +279,8 @@ enum class ModuleText(internal val english: String, internal val chinese: String
     NATIVE_FONT_SELECTED("Apple Music default font applied. Restart Apple Music to apply.", "已应用 Apple Music 默认字体，重开 Apple Music 后生效"),
     LYRICS_FONT_BOLD("Bold lyric font", "歌词加粗"),
     LYRICS_FONT_BOLD_SUMMARY("Synthetic bold on player lyrics · original or imported font", "播放器歌词合成加粗 · 原生或导入字体均可用"),
+    LYRIC_LINE_FLASH("Line-change glow", "换行律动光"),
+    LYRIC_LINE_FLASH_SUMMARY("The player background brightens softly when the lyric line changes", "歌词换行时背景中间柔和亮起"),
     LYRIC_EDGE_FEATHER("Edge feather", "边缘羽化"),
     LYRIC_EDGE_FEATHER_SUMMARY("Lyric rows fade towards the top and bottom edge of the viewport", "歌词行在视口上下边缘渐隐"),
     TABLET_HIDE_PLAYED_LYRICS("Hide sung lines", "已唱歌词消失"),

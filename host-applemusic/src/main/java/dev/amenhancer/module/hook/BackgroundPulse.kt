@@ -42,6 +42,8 @@ internal object BackgroundPulse {
     /** Called when the highlighted lyric line changes. */
     fun bump() {
         if (!ENABLED) return
+        if (!runCatching { dev.amenhancer.module.config.TargetConfigClient.currentSettings().lyricLineFlashEnabled }
+                .getOrDefault(true)) return
         val layer = attached ?: return
         val method = artworkMethod ?: return
         val base = hostTexture ?: return

@@ -60,6 +60,8 @@ data class ModuleSettings(
     /** Applies a synthetic bold face to player lyric text; works with the original or an imported font. */
     val lyricsFontBoldEnabled: Boolean = false,
     /** Vertical feather: rows fade out towards the top and bottom edge of the lyric viewport. */
+    /** Flashes the player background when the highlighted lyric line changes. */
+    val lyricLineFlashEnabled: Boolean = true,
     val lyricEdgeFeatherEnabled: Boolean = true,
     /** Enables the native rush-gradient adaptation for CJK karaoke lyrics. */
     val cjkKaraokeAnimationEnabled: Boolean = true,
