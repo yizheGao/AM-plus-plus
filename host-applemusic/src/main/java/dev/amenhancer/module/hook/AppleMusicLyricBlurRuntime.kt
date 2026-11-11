@@ -64,9 +64,9 @@ internal class AppleMusicLyricBlurRuntime(
                 val adapter = param.thisObject
                 if (adapter != null) onMain {
                     forAdapter(adapter)?.displayChanged()
-                    // A new line/word is the closest beat signal the module has
-                    // without an audio tap: pulse the background once.
-                    BackgroundPulse.bump()
+                    // Only line changes flash the background; word commits are
+                    // far too frequent and read as strobing.
+                    if (prefix == "line") BackgroundPulse.bump()
                 }
             })
             hook("${prefix}Document", after = { param ->

@@ -55,6 +55,7 @@ object AppleMusicHostFactory {
     ): TargetAdaptation {
         PlayerLyricsButtonsOrder.install(application)
         BackgroundPulse.install(application)
+        PcmProbe.install()
         ArtworkRotationCache.install(application) { true }
         val build = targetBuild(application)
         val profile = checkNotNull(dev.amenhancer.host.applemusic.AppleMusicHostProfiles.find(build.packageName, build.versionName, build.versionCode))
