@@ -6,10 +6,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.media.AudioManager
 import android.os.Build
@@ -19,7 +19,6 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
-import android.view.Window
 import dev.amenhancer.module.ModuleConstants
 import java.lang.ref.WeakReference
 import kotlin.math.exp
@@ -46,10 +45,10 @@ internal object GlowLayer {
     private const val BACKGROUND_LAYER = "background_layers"
     private const val FRAME_MS = 50L
     private const val IDLE_FRAME_MS = 160L
-    private const val AMBIENT_ALPHA = 0.07f
-    private const val PULSE_ALPHA = 0.50f
-    private const val PULSE_ATTACK_MS = 70f
-    private const val PULSE_DECAY_MS = 260f
+    private const val AMBIENT_ALPHA = 0.05f
+    private const val PULSE_ALPHA = 0.30f
+    private const val PULSE_ATTACK_MS = 120f
+    private const val PULSE_DECAY_MS = 420f
     private const val BREATH_PERIOD_MS = 7_400f
     private const val TEST_ACTION = "dev.ampp.glow.TEST"
 
@@ -362,25 +361,20 @@ internal object GlowLayer {
     /**
      * Plain View: no background, no touch handling. A sibling that does not consume the
      * event lets the host try the next child, so taps still reach the player controls.
+     *
+     * The glow is a ring hugging the viewport: brightest at the screen border, fading
+     * radially inwards to nothing. The mask is generated once per size and palette as a
+     * smoothstep distance field and then stretched with bilinear filtering, which keeps the
+     * falloff free of banding without any per-frame shader work.
      */
     private class GlowView(context: Context) : View(context) {
         var level: Float = 0f
         var warm: Int = 0xFFFFE7C8.toInt()
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val blobPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-        private var shaders: Array<RadialGradient>? = null
-        private var builtWidth = -1f
-        private var builtHeight = -1f
+        private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+        private var ring: Bitmap? = null
+        private var builtWidth = -1
+        private var builtHeight = -1
         private var builtTint = -1
-
-        /** Normalised to the shorter edge, so portrait and the tablet dual pane share framing. */
-        private val SPOTS = arrayOf(
-            Spot(0.20f, 0.27f, 0.21f, 1.00f),
-            Spot(0.47f, 0.50f, 0.25f, 1.15f),
-            Spot(0.78f, 0.30f, 0.19f, 0.95f),
-            Spot(0.63f, 0.83f, 0.22f, 0.80f),
-            Spot(0.30f, 0.79f, 0.17f, 0.70f),
-        )
 
         init {
             isClickable = false
@@ -391,62 +385,76 @@ internal object GlowLayer {
 
         override fun onDraw(canvas: Canvas) {
             if (level <= 0.004f) return
-            val w = width.toFloat()
-            val h = height.toFloat()
-            if (w <= 0f || h <= 0f) return
-            ensureGradients(w, h)
-            val gradients = shaders ?: return
-            // A wide, very faint halo ties the spots together without reading as a flat
-            // brightening of the whole page.
-            drawWith(canvas, gradients[0], w * 0.46f, h * 0.54f, minOf(w, h) * 0.95f, level * 0.22f)
-            for (index in SPOTS.indices) {
-                val spot = SPOTS[index]
-                val strength = level * spot.strength
-                if (strength <= 0.004f) continue
-                val radius = minOf(w, h) * (spot.radius + 0.03f * level)
-                drawWith(canvas, gradients[index + 1], w * spot.x, h * spot.y, radius, strength)
-            }
+            val w = width
+            val h = height
+            if (w <= 0 || h <= 0) return
+            ensureRing(w, h)
+            val alpha = (level * 255f).toInt().coerceIn(0, 255)
+            if (alpha <= 0) return
+            paint.alpha = alpha
+            canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
         }
 
-        /**
-         * Shaders are rebuilt only when the layer size or the cover palette changes: a
-         * RadialGradient per frame would allocate ~120 objects per second for no visual gain.
-         */
-        private fun ensureGradients(w: Float, h: Float) {
+        private fun ensureRing(w: Int, h: Int) {
             val bucket = tintBucket(warm)
-            if (shaders != null && builtWidth == w && builtHeight == h && builtTint == bucket) return
-            val edge = minOf(w, h)
-            val core = blend(warm, 0.55f)
-            val list = ArrayList<RadialGradient>(SPOTS.size + 1)
-            list += gradient(w * 0.46f, h * 0.54f, edge * 0.95f, core, warm)
-            SPOTS.forEach { spot ->
-                list += gradient(w * spot.x, h * spot.y, edge * (spot.radius + 0.03f), core, warm)
-            }
-            shaders = list.toTypedArray()
+            if (ring != null && builtWidth == w && builtHeight == h && builtTint == bucket) return
+            val mask = buildRing(w, h, warm) ?: return
+            ring = mask
+            paint.shader = android.graphics.BitmapShader(mask, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+                .apply {
+                    setLocalMatrix(android.graphics.Matrix().apply {
+                        setScale(w / mask.width.toFloat(), h / mask.height.toFloat())
+                    })
+                }
             builtWidth = w
             builtHeight = h
             builtTint = bucket
         }
 
-        private fun gradient(cx: Float, cy: Float, radius: Float, core: Int, tint: Int): RadialGradient =
-            RadialGradient(
-                cx, cy, radius,
-                intArrayOf(
-                    Color.argb(255, Color.red(core), Color.green(core), Color.blue(core)),
-                    Color.argb(140, Color.red(core), Color.green(core), Color.blue(core)),
-                    Color.argb(56, Color.red(tint), Color.green(tint), Color.blue(tint)),
-                    Color.TRANSPARENT,
-                ),
-                floatArrayOf(0f, 0.30f, 0.60f, 1f),
-                Shader.TileMode.CLAMP,
-            )
+        /**
+         * Distance-to-border field in a downscaled buffer: alpha 1 on the border, easing to 0
+         * at [BAND_FRACTION] of the shorter edge. `scale` is the view-pixel size of one mask
+         * pixel; bilinear upscaling turns the 8-bit ramp into a continuous gradient.
+         */
+        private fun buildRing(w: Int, h: Int, tint: Int): Bitmap? {
+            val maskWidth = minOf(MASK_MAX_WIDTH, w).coerceAtLeast(2)
+            val scale = w.toFloat() / maskWidth
+            val maskHeight = (h / scale).toInt().coerceAtLeast(2)
+            val band = BAND_FRACTION * minOf(w, h).toFloat()
+            val core = blend(tint, 0.55f)
+            val pixels = IntArray(maskWidth * maskHeight)
+            for (y in 0 until maskHeight) {
+                val fy = (y + 0.5f) * scale
+                val dy = minOf(fy, h - fy)
+                for (x in 0 until maskWidth) {
+                    val fx = (x + 0.5f) * scale
+                    val distance = minOf(dx(dy, fx, w), band) / band
+                    if (distance >= 1f) continue
+                    // smoothstep: zero slope at both ends, so neither the border nor the
+                    // inner edge shows a seam.
+                    val t = distance * distance * (3f - 2f * distance)
+                    val alpha = ((1f - t) * 255f).toInt().coerceIn(0, 255)
+                    if (alpha <= 0) continue
+                    val color = lerp(core, tint, t)
+                    pixels[y * maskWidth + x] = (alpha shl 24) or (color and 0x00FFFFFF)
+                }
+            }
+            return runCatching {
+                Bitmap.createBitmap(maskWidth, maskHeight, Bitmap.Config.ARGB_8888).apply {
+                    setPixels(pixels, 0, maskWidth, 0, 0, maskWidth, maskHeight)
+                }
+            }.getOrNull()
+        }
 
-        private fun drawWith(canvas: Canvas, shader: RadialGradient, cx: Float, cy: Float, radius: Float, strength: Float) {
-            val alpha = (strength * 255f).toInt().coerceIn(0, 255)
-            if (alpha <= 0) return
-            blobPaint.shader = shader
-            blobPaint.alpha = alpha
-            canvas.drawCircle(cx, cy, radius, blobPaint)
+        private fun dx(dy: Float, fx: Float, w: Int): Float = minOf(dy, fx, w - fx)
+
+        private fun lerp(from: Int, to: Int, t: Float): Int {
+            val keep = 1f - t
+            return Color.rgb(
+                (Color.red(from) * keep + Color.red(to) * t).toInt().coerceIn(0, 255),
+                (Color.green(from) * keep + Color.green(to) * t).toInt().coerceIn(0, 255),
+                (Color.blue(from) * keep + Color.blue(to) * t).toInt().coerceIn(0, 255),
+            )
         }
 
         /** Mixes the cover tint towards warm white. */
@@ -461,28 +469,11 @@ internal object GlowLayer {
 
         private fun tintBucket(color: Int): Int =
             (Color.red(color) shr 2 shl 16) or (Color.green(color) shr 2 shl 8) or (Color.blue(color) shr 2)
-
-        private data class Spot(val x: Float, val y: Float, val radius: Float, val strength: Float)
-
-        private fun drawBlob(canvas: Canvas, cx: Float, cy: Float, radius: Float, strength: Float, tint: Int) {
-            if (radius <= 0f || strength <= 0.004f) return
-            val alpha = (strength * 255f).toInt().coerceIn(0, 255)
-            if (alpha <= 0) return
-            val coreR = (Color.red(tint) * 0.55f + 255f * 0.45f).toInt().coerceIn(0, 255)
-            val coreG = (Color.green(tint) * 0.55f + 245f * 0.45f).toInt().coerceIn(0, 255)
-            val coreB = (Color.blue(tint) * 0.55f + 232f * 0.45f).toInt().coerceIn(0, 255)
-            blobPaint.shader = RadialGradient(
-                cx, cy, radius,
-                intArrayOf(
-                    Color.argb(alpha, coreR, coreG, coreB),
-                    Color.argb((alpha * 0.55f).toInt(), coreR, coreG, coreB),
-                    Color.argb((alpha * 0.22f).toInt(), Color.red(tint), Color.green(tint), Color.blue(tint)),
-                    Color.TRANSPARENT,
-                ),
-                floatArrayOf(0f, 0.30f, 0.60f, 1f),
-                Shader.TileMode.CLAMP,
-            )
-            canvas.drawCircle(cx, cy, radius, blobPaint)
-        }
     }
+
+    /** Mask edge length in pixels; small enough to build instantly, large enough to stay smooth. */
+    private const val MASK_MAX_WIDTH = 480
+
+    /** How far the ring reaches inwards, as a fraction of the shorter viewport edge. */
+    private const val BAND_FRACTION = 0.18f
 }
