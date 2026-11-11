@@ -280,7 +280,7 @@ enum class ModuleText(internal val english: String, internal val chinese: String
     LYRICS_FONT_BOLD("Bold lyric font", "歌词加粗"),
     LYRICS_FONT_BOLD_SUMMARY("Synthetic bold on player lyrics · original or imported font", "播放器歌词合成加粗 · 原生或导入字体均可用"),
     LYRIC_LINE_FLASH("Line-change glow", "换行律动光"),
-    LYRIC_LINE_FLASH_SUMMARY("The player background brightens softly when the lyric line changes", "歌词换行时背景中间柔和亮起"),
+    LYRIC_LINE_FLASH_SUMMARY("Soft light on the player background: a slow breath while playing, a lift on every lyric line", "播放页背景柔光：播放时缓慢呼吸，歌词换行时亮起"),
     LYRIC_EDGE_FEATHER("Edge feather", "边缘羽化"),
     LYRIC_EDGE_FEATHER_SUMMARY("Lyric rows fade towards the top and bottom edge of the viewport", "歌词行在视口上下边缘渐隐"),
     TABLET_HIDE_PLAYED_LYRICS("Hide sung lines", "已唱歌词消失"),

@@ -55,7 +55,7 @@ object AppleMusicHostFactory {
     ): TargetAdaptation {
         PlayerLyricsButtonsOrder.install(application)
         BackgroundPulse.install(application)
-        InsertionScanProbe.install(application)
+        GlowLayer.install(application)
         PcmProbe.install()
         ArtworkRotationCache.install(application) { true }
         val build = targetBuild(application)
