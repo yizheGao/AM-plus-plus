@@ -125,7 +125,12 @@ internal class AppleMusicLyricBlurRuntime(
                 val copied = if (session.diagnosticEnabled()) param.args.getOrNull(1)?.let {
                     contract.decodeVector(it, role != "nativeLine")
                 } else null
-                onMain { session.nativeEvent(epoch, role, position, copied) }
+                onMain {
+                    session.nativeEvent(epoch, role, position, copied)
+                    // The native line highlight is the one per-line signal that
+                    // actually fires on this build (adapter lineCommit does not).
+                    if (role == "nativeLine") BackgroundPulse.bump()
+                }
             })
         }
         AppleMusicLyricBlurContract.wordRoles.forEach { role ->

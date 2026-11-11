@@ -30,7 +30,7 @@ internal object BackgroundPulse {
     private const val ENABLED = true
     private const val BACKGROUND_LAYER = "background_layers"
     private const val TEXTURE_EDGE = 128
-    private const val RESTORE_MS = 120L
+    private const val RESTORE_MS = 170L
 
     private val handler = Handler(Looper.getMainLooper())
     @Volatile private var attached: View? = null
@@ -48,7 +48,7 @@ internal object BackgroundPulse {
         val active = musicActive(layer.context)
         ModernXposedRuntime.log("background pulse: bump active=$active")
         if (!active) return
-        flash(layer, method, base, 0.85f)
+        flash(layer, method, base, 1f)
     }
 
     fun install(application: Application) {
@@ -133,14 +133,14 @@ internal object BackgroundPulse {
         val canvas = Canvas(bitmap)
         canvas.drawBitmap(source, null, Rect(0, 0, TEXTURE_EDGE, TEXTURE_EDGE), Paint(Paint.FILTER_BITMAP_FLAG))
         if (strength <= 0.01f) return bitmap
-        val radius = TEXTURE_EDGE * 0.45f
+        val radius = TEXTURE_EDGE * 0.55f
         val glow = RadialGradient(
             TEXTURE_EDGE / 2f,
             TEXTURE_EDGE / 2f,
             radius,
             intArrayOf(
-                Color.argb((150 * strength).toInt().coerceIn(0, 255), 255, 255, 255),
-                Color.argb((70 * strength).toInt().coerceIn(0, 255), 255, 255, 255),
+                Color.argb((235 * strength).toInt().coerceIn(0, 255), 255, 255, 255),
+                Color.argb((110 * strength).toInt().coerceIn(0, 255), 255, 255, 255),
                 Color.TRANSPARENT,
             ),
             floatArrayOf(0f, 0.5f, 1f),
