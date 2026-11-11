@@ -62,7 +62,12 @@ internal class AppleMusicLyricBlurRuntime(
         listOf("line", "word").forEach { prefix ->
             hook("${prefix}Commit", after = { param ->
                 val adapter = param.thisObject
-                if (adapter != null) onMain { forAdapter(adapter)?.displayChanged() }
+                if (adapter != null) onMain {
+                    forAdapter(adapter)?.displayChanged()
+                    // A new line/word is the closest beat signal the module has
+                    // without an audio tap: pulse the background once.
+                    BackgroundPulse.bump()
+                }
             })
             hook("${prefix}Document", after = { param ->
                 val adapter = param.thisObject
