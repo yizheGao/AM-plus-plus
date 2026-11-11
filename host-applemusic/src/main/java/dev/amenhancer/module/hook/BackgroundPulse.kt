@@ -37,6 +37,10 @@ internal object BackgroundPulse {
     private const val TEXTURE_EDGE = 128
 
     @Volatile private var pulse = 0f
+    /** The host's own cover bitmap, captured from its setArtwork call. */
+    @Volatile private var hostTexture: Bitmap? = null
+    private val writing = ThreadLocal.withInitial { false }
+    @Volatile private var captureHooked = false
     private val handler = Handler(Looper.getMainLooper())
     @Volatile private var attached: View? = null
 
@@ -80,6 +84,7 @@ internal object BackgroundPulse {
         }
 
         attached = layer
+        installCaptureHook(setArtwork)
         ModernXposedRuntime.log("background pulse: driving ${layer.javaClass.simpleName} ${layer.width}x${layer.height}")
 
         val startedAt = SystemClock.uptimeMillis()
@@ -92,6 +97,8 @@ internal object BackgroundPulse {
                     if (attached === layer) attached = null
                     return
                 }
+                val captured = hostTexture
+                if (captured != null) base = captured
                 if (base == null) base = findArtwork(activity, decor)
                 val source = base
                 if (source != null) {
@@ -100,7 +107,12 @@ internal object BackgroundPulse {
                     pulse = (pulse * 0.80f).coerceAtLeast(0f)
                     runCatching {
                         val frame = renderFrame(source, seconds, kick, paint)
-                        setArtwork.invoke(layer, frame)
+                        writing.set(true)
+                        try {
+                            setArtwork.invoke(layer, frame)
+                        } finally {
+                            writing.set(false)
+                        }
                     }
                 }
                 handler.postDelayed(this, UPDATE_MS)
@@ -109,12 +121,34 @@ internal object BackgroundPulse {
         handler.post(tick)
     }
 
+    /**
+     * The host hands its own cover to the background layer; that bitmap is the
+     * only reliable coloured source (the slot itself renders through a
+     * transition surface). Capture it, then feed our variant back in.
+     */
+    private fun installCaptureHook(method: java.lang.reflect.Method) {
+        if (captureHooked) return
+        captureHooked = true
+        runCatching {
+            ModernXposedRuntime.hookMethod(method, object : ModernMethodHook() {
+                override fun afterHookedMethod(param: MethodHookParam) {
+                    if (writing.get() == true) return
+                    val bitmap = param.args.firstOrNull() as? Bitmap ?: return
+                    if (bitmap.width < 8 || bitmap.height < 8) return
+                    if (!hasColour(bitmap)) return
+                    hostTexture = Bitmap.createScaledBitmap(bitmap, 32, 32, true)
+                }
+            })
+            ModernXposedRuntime.log("background pulse: setArtwork capture hook installed")
+        }.onFailure { ModernXposedRuntime.log("background pulse: capture hook failed: $it") }
+    }
+
     /** Small wobble + optional brightness kick; the host blurs this further. */
     private fun renderFrame(source: Bitmap, seconds: Float, kick: Float, paint: Paint): Bitmap {
         val bitmap = Bitmap.createBitmap(TEXTURE_EDGE, TEXTURE_EDGE, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val drift = sin(seconds * 0.55f) * 10f
-        val sway = sin(seconds * 0.37f + 1.1f) * 8f
+        val drift = sin(seconds * 0.55f) * 22f
+        val sway = sin(seconds * 0.37f + 1.1f) * 18f
         canvas.drawBitmap(
             source,
             null,
@@ -126,9 +160,20 @@ internal object BackgroundPulse {
             ),
             paint,
         )
+        // Slow brightness breath so the field visibly inhales even without a kick.
+        val breath = 0.5f - 0.5f * kotlin.math.cos(seconds * 2f * Math.PI.toFloat() * 0.35f)
+        val dim = (0.10f * (1f - breath)).coerceIn(0f, 0.10f)
+        if (dim > 0.005f) {
+            paint.colorFilter = PorterDuffColorFilter(
+                Color.argb((dim * 255).toInt(), 0, 0, 0),
+                PorterDuff.Mode.SRC_ATOP,
+            )
+            canvas.drawRect(0f, 0f, TEXTURE_EDGE.toFloat(), TEXTURE_EDGE.toFloat(), paint)
+            paint.colorFilter = null
+        }
         if (kick > 0.01f) {
             paint.colorFilter = PorterDuffColorFilter(
-                Color.argb((kick * 70).toInt().coerceIn(0, 255), 255, 255, 255),
+                Color.argb((kick * 90).toInt().coerceIn(0, 255), 255, 255, 255),
                 PorterDuff.Mode.SRC_ATOP,
             )
             canvas.drawRect(0f, 0f, TEXTURE_EDGE.toFloat(), TEXTURE_EDGE.toFloat(), paint)
