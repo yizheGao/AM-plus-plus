@@ -62,6 +62,12 @@ data class ModuleSettings(
     /** Vertical feather: rows fade out towards the top and bottom edge of the lyric viewport. */
     /** Flashes the player background when the highlighted lyric line changes. */
     val lyricLineFlashEnabled: Boolean = true,
+    /** Edge-glow brightness in percent of the tuned default; 0 turns the glow off. */
+    val lyricGlowStrengthPercent: Int = 100,
+    /** Edge-glow width in percent of the shorter viewport edge; 0 turns the glow off. */
+    val lyricGlowBandPercent: Int = 18,
+    /** Seconds per ambient breath; 0 keeps the glow steady between lyric lines. */
+    val lyricGlowBreathSeconds: Int = 7,
     val lyricEdgeFeatherEnabled: Boolean = true,
     /** Enables the native rush-gradient adaptation for CJK karaoke lyrics. */
     val cjkKaraokeAnimationEnabled: Boolean = true,
@@ -107,6 +113,12 @@ data class ModuleSettings(
     val schemaVersion: Int = ModuleConstants.CONFIG_SCHEMA_VERSION,
 ) {
     companion object {
+        const val MIN_LYRIC_GLOW_STRENGTH_PERCENT = 0
+        const val MAX_LYRIC_GLOW_STRENGTH_PERCENT = 200
+        const val MIN_LYRIC_GLOW_BAND_PERCENT = 0
+        const val MAX_LYRIC_GLOW_BAND_PERCENT = 40
+        const val MIN_LYRIC_GLOW_BREATH_SECONDS = 0
+        const val MAX_LYRIC_GLOW_BREATH_SECONDS = 30
         const val MIN_LYRIC_BLUR_RADIUS_OFFSET_PX = -10
         const val MAX_LYRIC_BLUR_RADIUS_OFFSET_PX = 10
         const val FOLLOW_SYSTEM_APPLE_MUSIC_DPI = 0

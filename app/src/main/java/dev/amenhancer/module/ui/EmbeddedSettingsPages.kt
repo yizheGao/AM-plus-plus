@@ -472,6 +472,30 @@ private fun EmbeddedSettingsHost.EmbeddedSettingsCategory(
                     settings.lyricLineFlashEnabled, EmbeddedSvgIcon.LyricEffects) { value ->
                     onEdit { it.copy(lyricLineFlashEnabled = value) }
                 }
+                EmbeddedSettingRange(
+                    title = localizedText(ModuleText.LYRIC_GLOW_STRENGTH),
+                    value = settings.lyricGlowStrengthPercent,
+                    range = ModuleSettings.MIN_LYRIC_GLOW_STRENGTH_PERCENT..ModuleSettings.MAX_LYRIC_GLOW_STRENGTH_PERCENT,
+                    unit = "%",
+                    summary = localizedText(ModuleText.LYRIC_GLOW_STRENGTH_SUMMARY),
+                    defaultValue = 100,
+                ) { value -> onEdit { it.copy(lyricGlowStrengthPercent = value) } }
+                EmbeddedSettingRange(
+                    title = localizedText(ModuleText.LYRIC_GLOW_BAND),
+                    value = settings.lyricGlowBandPercent,
+                    range = ModuleSettings.MIN_LYRIC_GLOW_BAND_PERCENT..ModuleSettings.MAX_LYRIC_GLOW_BAND_PERCENT,
+                    unit = "%",
+                    summary = localizedText(ModuleText.LYRIC_GLOW_BAND_SUMMARY),
+                    defaultValue = 18,
+                ) { value -> onEdit { it.copy(lyricGlowBandPercent = value) } }
+                EmbeddedSettingRange(
+                    title = localizedText(ModuleText.LYRIC_GLOW_BREATH),
+                    value = settings.lyricGlowBreathSeconds,
+                    range = ModuleSettings.MIN_LYRIC_GLOW_BREATH_SECONDS..ModuleSettings.MAX_LYRIC_GLOW_BREATH_SECONDS,
+                    unit = " s",
+                    summary = localizedText(ModuleText.LYRIC_GLOW_BREATH_SUMMARY),
+                    defaultValue = 7,
+                ) { value -> onEdit { it.copy(lyricGlowBreathSeconds = value) } }
                 Setting(ModuleText.LYRIC_EDGE_FEATHER, ModuleText.LYRIC_EDGE_FEATHER_SUMMARY,
                     settings.lyricEdgeFeatherEnabled, EmbeddedSvgIcon.LyricsBlur) { value -> onEdit { it.copy(lyricEdgeFeatherEnabled = value) } }
                 Setting(ModuleText.TABLET_HIDE_PLAYED_LYRICS, ModuleText.TABLET_HIDE_PLAYED_LYRICS_SUMMARY,

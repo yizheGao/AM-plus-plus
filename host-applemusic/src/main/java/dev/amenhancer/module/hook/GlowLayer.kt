@@ -49,7 +49,8 @@ internal object GlowLayer {
     private const val PULSE_ALPHA = 0.30f
     private const val PULSE_ATTACK_MS = 120f
     private const val PULSE_DECAY_MS = 420f
-    private const val BREATH_PERIOD_MS = 7_400f
+    private const val DEFAULT_BREATH_SECONDS = 7f
+    private const val CONFIG_TTL_MS = 200L
     private const val TEST_ACTION = "dev.ampp.glow.TEST"
 
     private val handler = Handler(Looper.getMainLooper())
@@ -67,12 +68,23 @@ internal object GlowLayer {
     @Volatile private var looping: Boolean = false
     private var pulseLogs = 0
 
+    private data class GlowConfig(
+        val on: Boolean,
+        val strength: Float,
+        val band: Float,
+        val breathMs: Float,
+    )
+
+    @Volatile private var config = GlowConfig(false, 1f, 0.18f, DEFAULT_BREATH_SECONDS * 1000f)
+    @Volatile private var configAt = 0L
+
     private val frame = object : Runnable {
         override fun run() {
             val view = attached ?: return stopLooping()
             val root = rootRef.get()
             if (root == null || !view.isAttachedToWindow || !view.isShown) return stopLooping()
-            if (!enabled()) {
+            val config = config()
+            if (!config.on) {
                 view.alpha = 0f
                 pulsePeak = 0f
                 return stopLooping()
@@ -80,8 +92,16 @@ internal object GlowLayer {
             val now = SystemClock.uptimeMillis()
             val energy = energyAt(now)
             val playing = musicActive(view.context)
-            val breath = if (playing) 0.5f + 0.5f * sin(now / BREATH_PERIOD_MS) else 0f
-            view.level = (if (playing) AMBIENT_ALPHA * breath else 0f) + PULSE_ALPHA * energy
+            val breathing = playing && config.breathMs > 0f
+            // Real period in seconds: one full breath per configured span.
+            val breath = if (breathing) {
+                0.5f + 0.5f * sin((now / config.breathMs) * TWO_PI)
+            } else {
+                0f
+            }
+            view.bandFraction = config.band
+            view.level = (if (breathing) AMBIENT_ALPHA * config.strength * breath else 0f) +
+                PULSE_ALPHA * config.strength * energy
             view.warm = coverColor()
             if (view.level <= 0.004f) {
                 view.alpha = 0f
@@ -126,8 +146,9 @@ internal object GlowLayer {
 
     fun pulse(strength: Float) {
         if (strength <= 0.01f) return
-        if (!enabled()) {
-            ModernXposedRuntime.log("$TAG: pulse ignored, setting off")
+        val config = config()
+        if (!config.on) {
+            ModernXposedRuntime.log("$TAG: pulse ignored, glow off (strength=${config.strength} band=${config.band})")
             return
         }
         val view = attached ?: return
@@ -154,14 +175,36 @@ internal object GlowLayer {
             " window=${view?.isAttachedToWindow}" +
             " shown=${view?.isShown}" +
             " size=${view?.width}x${view?.height}" +
-            " enabled=${enabled()}" +
+            " cfg=${config()}" +
             " looping=$looping" +
             " pulseAt=$pulseAt holdUntil=$holdUntil"
     }
 
-    private fun enabled(): Boolean = runCatching {
-        dev.amenhancer.module.config.TargetConfigClient.currentSettings().lyricLineFlashEnabled
-    }.getOrDefault(false)
+    /**
+     * Snapshot of the three glow settings, refreshed at most every [CONFIG_TTL_MS]; the frame
+     * loop reads it several times a second and a full settings decode per frame is wasteful.
+     * Any of the three at zero switches the layer off, as does the master toggle.
+     */
+    private fun config(): GlowConfig {
+        val now = SystemClock.uptimeMillis()
+        val cached = config
+        if (now - configAt < CONFIG_TTL_MS) return cached
+        configAt = now
+        val settings = runCatching {
+            dev.amenhancer.module.config.TargetConfigClient.currentSettings()
+        }.getOrNull()
+        val strength = (settings?.lyricGlowStrengthPercent ?: 0).coerceAtLeast(0) / 100f
+        val band = (settings?.lyricGlowBandPercent ?: 0).coerceAtLeast(0) / 100f
+        val breathSeconds = settings?.lyricGlowBreathSeconds ?: 0
+        val fresh = GlowConfig(
+            on = settings != null && settings.lyricLineFlashEnabled && strength > 0f && band > 0f,
+            strength = strength,
+            band = band,
+            breathMs = if (breathSeconds > 0) breathSeconds * 1000f else 0f,
+        )
+        config = fresh
+        return fresh
+    }
 
     private fun energyAt(now: Long): Float {
         val at = pulseAt
@@ -257,7 +300,7 @@ internal object GlowLayer {
         view.alpha = 0f
         rootRef = WeakReference(root)
         watch(root)
-        if (!looping && enabled()) {
+        if (!looping && config().on) {
             looping = true
             handler.post(frame)
         }
@@ -370,6 +413,13 @@ internal object GlowLayer {
     private class GlowView(context: Context) : View(context) {
         var level: Float = 0f
         var warm: Int = 0xFFFFE7C8.toInt()
+        var bandFraction: Float = 0.18f
+            set(value) {
+                if (value == field) return
+                field = value
+                ring = null
+                invalidate()
+            }
         private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
         private var ring: Bitmap? = null
         private var builtWidth = -1
@@ -413,14 +463,14 @@ internal object GlowLayer {
 
         /**
          * Distance-to-border field in a downscaled buffer: alpha 1 on the border, easing to 0
-         * at [BAND_FRACTION] of the shorter edge. `scale` is the view-pixel size of one mask
+         * at [bandFraction] of the shorter edge. `scale` is the view-pixel size of one mask
          * pixel; bilinear upscaling turns the 8-bit ramp into a continuous gradient.
          */
         private fun buildRing(w: Int, h: Int, tint: Int): Bitmap? {
             val maskWidth = minOf(MASK_MAX_WIDTH, w).coerceAtLeast(2)
             val scale = w.toFloat() / maskWidth
             val maskHeight = (h / scale).toInt().coerceAtLeast(2)
-            val band = BAND_FRACTION * minOf(w, h).toFloat()
+            val band = (bandFraction * minOf(w, h)).coerceAtLeast(1f)
             val core = blend(tint, 0.55f)
             val pixels = IntArray(maskWidth * maskHeight)
             for (y in 0 until maskHeight) {
@@ -471,9 +521,9 @@ internal object GlowLayer {
             (Color.red(color) shr 2 shl 16) or (Color.green(color) shr 2 shl 8) or (Color.blue(color) shr 2)
     }
 
+    private const val TWO_PI = (2.0 * Math.PI).toFloat()
+
     /** Mask edge length in pixels; small enough to build instantly, large enough to stay smooth. */
     private const val MASK_MAX_WIDTH = 480
 
-    /** How far the ring reaches inwards, as a fraction of the shorter viewport edge. */
-    private const val BAND_FRACTION = 0.18f
 }

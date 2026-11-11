@@ -73,6 +73,21 @@ object ModuleSettingsSchema {
         ),
         lyricsFontBoldEnabled = values.boolean(KEY_LYRIC_FONT_BOLD, default = false),
         lyricLineFlashEnabled = values.boolean(KEY_LYRIC_LINE_FLASH, default = true),
+        lyricGlowStrengthPercent = values.number(KEY_LYRIC_GLOW_STRENGTH)
+            ?.coerceIn(
+                ModuleSettings.MIN_LYRIC_GLOW_STRENGTH_PERCENT,
+                ModuleSettings.MAX_LYRIC_GLOW_STRENGTH_PERCENT,
+            ) ?: 100,
+        lyricGlowBandPercent = values.number(KEY_LYRIC_GLOW_BAND)
+            ?.coerceIn(
+                ModuleSettings.MIN_LYRIC_GLOW_BAND_PERCENT,
+                ModuleSettings.MAX_LYRIC_GLOW_BAND_PERCENT,
+            ) ?: 18,
+        lyricGlowBreathSeconds = values.number(KEY_LYRIC_GLOW_BREATH)
+            ?.coerceIn(
+                ModuleSettings.MIN_LYRIC_GLOW_BREATH_SECONDS,
+                ModuleSettings.MAX_LYRIC_GLOW_BREATH_SECONDS,
+            ) ?: 7,
         lyricEdgeFeatherEnabled = values.boolean(KEY_LYRIC_EDGE_FEATHER, default = true),
         cjkKaraokeAnimationEnabled = values.boolean(
             KEY_CJK_KARAOKE_ANIMATION_ENABLED,
@@ -166,6 +181,18 @@ object ModuleSettingsSchema {
             KEY_DUAL_PANE_HIDE_PLAYED_LYRICS to settings.dualPaneHidePlayedLyricsEnabled,
             KEY_LYRIC_FONT_BOLD to settings.lyricsFontBoldEnabled,
             KEY_LYRIC_LINE_FLASH to settings.lyricLineFlashEnabled,
+            KEY_LYRIC_GLOW_STRENGTH to settings.lyricGlowStrengthPercent.coerceIn(
+                ModuleSettings.MIN_LYRIC_GLOW_STRENGTH_PERCENT,
+                ModuleSettings.MAX_LYRIC_GLOW_STRENGTH_PERCENT,
+            ),
+            KEY_LYRIC_GLOW_BAND to settings.lyricGlowBandPercent.coerceIn(
+                ModuleSettings.MIN_LYRIC_GLOW_BAND_PERCENT,
+                ModuleSettings.MAX_LYRIC_GLOW_BAND_PERCENT,
+            ),
+            KEY_LYRIC_GLOW_BREATH to settings.lyricGlowBreathSeconds.coerceIn(
+                ModuleSettings.MIN_LYRIC_GLOW_BREATH_SECONDS,
+                ModuleSettings.MAX_LYRIC_GLOW_BREATH_SECONDS,
+            ),
             KEY_LYRIC_EDGE_FEATHER to settings.lyricEdgeFeatherEnabled,
             KEY_CJK_KARAOKE_ANIMATION_ENABLED to settings.cjkKaraokeAnimationEnabled,
             KEY_LYRIC_EFFECTS_OPTIMIZATION_ENABLED to settings.lyricEffectsOptimizationEnabled,
@@ -384,6 +411,9 @@ object ModuleSettingsSchema {
         KEY_DUAL_PANE_HIDE_PLAYED_LYRICS,
         KEY_LYRIC_FONT_BOLD,
         KEY_LYRIC_LINE_FLASH,
+        KEY_LYRIC_GLOW_STRENGTH,
+        KEY_LYRIC_GLOW_BAND,
+        KEY_LYRIC_GLOW_BREATH,
         KEY_LYRIC_EDGE_FEATHER,
         KEY_CJK_KARAOKE_ANIMATION_ENABLED,
         KEY_LYRIC_EFFECTS_OPTIMIZATION_ENABLED,
@@ -443,6 +473,9 @@ object ModuleSettingsSchema {
     private const val KEY_DUAL_PANE_HIDE_PLAYED_LYRICS = "dual_pane_hide_played_lyrics_enabled"
     private const val KEY_LYRIC_FONT_BOLD = "lyrics_font_bold_enabled"
     private const val KEY_LYRIC_LINE_FLASH = "lyric_line_flash_enabled"
+    private const val KEY_LYRIC_GLOW_STRENGTH = "lyric_glow_strength_percent"
+    private const val KEY_LYRIC_GLOW_BAND = "lyric_glow_band_percent"
+    private const val KEY_LYRIC_GLOW_BREATH = "lyric_glow_breath_seconds"
     private const val KEY_LYRIC_EDGE_FEATHER = "lyric_edge_feather_enabled"
     private const val KEY_STARTUP_PAGE_PREWARM = "startup_page_prewarm_enabled"
     private const val KEY_CJK_KARAOKE_ANIMATION_ENABLED = "cjk_karaoke_animation_enabled"
