@@ -48,6 +48,11 @@ internal object BackgroundPulse {
         pulse = 1f
     }
 
+    /** Beat-driven pulse with the detector's own strength. */
+    fun bumpTo(strength: Float) {
+        if (strength > pulse) pulse = strength.coerceIn(0f, 1f)
+    }
+
     fun install(application: Application) {
         application.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
@@ -86,9 +91,8 @@ internal object BackgroundPulse {
         attached = layer
         installCaptureHook(setArtwork)
         val animators = reflectAnimators(layer)
-        // The host leaves its own breathing animators stopped until it decides
-        // to run them; starting them is what makes the background move.
-        runCatching { animators.forEach { if (!it.isRunning) it.start() } }
+        // Global breathing is not wanted: the background stays still and only
+        // flashes on detected beats (see BeatPulse).
         ModernXposedRuntime.log(
             "background pulse: driving ${layer.javaClass.simpleName} ${layer.width}x${layer.height}" +
                 " animators=${animators.size}",
@@ -104,7 +108,7 @@ internal object BackgroundPulse {
                     if (attached === layer) attached = null
                     return
                 }
-                if (pulse > 0.5f) kickAnimators(layer)
+                if (pulse > 0.05f) flash(layer, setArtwork, pulse)
                 val captured = hostTexture
                 if (captured != null) base = captured
                 if (base == null) base = findArtwork(activity, decor)
@@ -147,6 +151,32 @@ internal object BackgroundPulse {
             ModernXposedRuntime.log("background pulse: field $name=$value")
         }
         return out
+    }
+
+    /** One short bright flash through the host's own blur pipeline. */
+    private fun flash(layer: View, setArtwork: java.lang.reflect.Method, strength: Float) {
+        val base = hostTexture ?: return
+        val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+        runCatching {
+            val bright = renderFrame(base, 0f, strength.coerceIn(0.25f, 1f), paint)
+            writing.set(true)
+            try {
+                setArtwork.invoke(layer, bright)
+            } finally {
+                writing.set(false)
+            }
+            handler.postDelayed({
+                val normal = runCatching { renderFrame(base, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG)) }.getOrNull()
+                if (normal != null) {
+                    writing.set(true)
+                    try {
+                        setArtwork.invoke(layer, normal)
+                    } finally {
+                        writing.set(false)
+                    }
+                }
+            }, 110L)
+        }
     }
 
     /** Restarts the host's own pulse; only called when a lyric line lands. */
