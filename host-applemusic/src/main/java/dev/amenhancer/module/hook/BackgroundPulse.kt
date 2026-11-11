@@ -30,7 +30,7 @@ import kotlin.math.sin
  * own animation. Cost stays low because the source stays at 128 px.
  */
 internal object BackgroundPulse {
-    private const val ENABLED = false
+    private const val ENABLED = true
     private const val BACKGROUND_LAYER = "background_layers"
     private const val ARTWORK_ID = "fullplayerSongImage"
     private const val UPDATE_MS = 200L
@@ -85,7 +85,14 @@ internal object BackgroundPulse {
 
         attached = layer
         installCaptureHook(setArtwork)
-        ModernXposedRuntime.log("background pulse: driving ${layer.javaClass.simpleName} ${layer.width}x${layer.height}")
+        val animators = reflectAnimators(layer)
+        // The host leaves its own breathing animators stopped until it decides
+        // to run them; starting them is what makes the background move.
+        runCatching { animators.forEach { if (!it.isRunning) it.start() } }
+        ModernXposedRuntime.log(
+            "background pulse: driving ${layer.javaClass.simpleName} ${layer.width}x${layer.height}" +
+                " animators=${animators.size}",
+        )
 
         val startedAt = SystemClock.uptimeMillis()
         val paint = Paint(Paint.FILTER_BITMAP_FLAG)
@@ -97,6 +104,7 @@ internal object BackgroundPulse {
                     if (attached === layer) attached = null
                     return
                 }
+                if (pulse > 0.5f) kickAnimators(layer)
                 val captured = hostTexture
                 if (captured != null) base = captured
                 if (base == null) base = findArtwork(activity, decor)
@@ -119,6 +127,37 @@ internal object BackgroundPulse {
             }
         }
         handler.post(tick)
+    }
+
+    /** H/L/M are the host's own breathing animators; they are what actually moves. */
+    private fun reflectAnimators(layer: View): List<android.animation.ValueAnimator> {
+        val out = ArrayList<android.animation.ValueAnimator>(3)
+        for (name in listOf("H", "L", "M")) {
+            val field = runCatching { layer.javaClass.getField(name) }.getOrNull() ?: continue
+            val value = runCatching { field.get(layer) }.getOrNull() as? android.animation.ValueAnimator ?: continue
+            out += value
+            ModernXposedRuntime.log(
+                "background pulse: animator $name running=${value.isRunning} duration=${value.duration}" +
+                    " repeat=${value.repeatCount}",
+            )
+        }
+        for (name in listOf("a", "a0", "W", "b0", "c0")) {
+            val field = runCatching { layer.javaClass.getField(name) }.getOrNull() ?: continue
+            val value = runCatching { field.getFloat(layer) }.getOrNull() ?: continue
+            ModernXposedRuntime.log("background pulse: field $name=$value")
+        }
+        return out
+    }
+
+    /** Restarts the host's own pulse; only called when a lyric line lands. */
+    private fun kickAnimators(layer: View) {
+        runCatching {
+            for (name in listOf("H", "L", "M")) {
+                val field = layer.javaClass.getField(name)
+                val animator = field.get(layer) as? android.animation.ValueAnimator ?: continue
+                if (!animator.isRunning) animator.start() else animator.start()
+            }
+        }
     }
 
     /**
