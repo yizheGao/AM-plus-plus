@@ -30,7 +30,7 @@ internal object BackgroundPulse {
     private const val ENABLED = true
     private const val BACKGROUND_LAYER = "background_layers"
     private const val TEXTURE_EDGE = 128
-    private const val RESTORE_MS = 170L
+    private const val RESTORE_MS = 120L
 
     private val handler = Handler(Looper.getMainLooper())
     @Volatile private var attached: View? = null
@@ -38,6 +38,19 @@ internal object BackgroundPulse {
     @Volatile private var hostTexture: Bitmap? = null
     private val writing = ThreadLocal.withInitial { false }
     @Volatile private var captureHooked = false
+
+    /**
+     * Single entry point for every pulse source: the lyric-line trigger today,
+     * a beat detector later. [strength] is 0..1 and only scales brightness.
+     */
+    fun pulse(strength: Float) {
+        if (!ENABLED) return
+        val layer = attached ?: return
+        val method = artworkMethod ?: return
+        val base = hostTexture ?: return
+        if (!musicActive(layer.context)) return
+        flash(layer, method, base, strength.coerceIn(0f, 1f))
+    }
 
     /** Called when the highlighted lyric line changes. */
     fun bump() {
@@ -47,10 +60,7 @@ internal object BackgroundPulse {
         val layer = attached ?: return
         val method = artworkMethod ?: return
         val base = hostTexture ?: return
-        val active = musicActive(layer.context)
-        ModernXposedRuntime.log("background pulse: bump active=$active")
-        if (!active) return
-        flash(layer, method, base, 1f)
+        pulse(0.7f)
     }
 
     fun install(application: Application) {
@@ -135,17 +145,17 @@ internal object BackgroundPulse {
         val canvas = Canvas(bitmap)
         canvas.drawBitmap(source, null, Rect(0, 0, TEXTURE_EDGE, TEXTURE_EDGE), Paint(Paint.FILTER_BITMAP_FLAG))
         if (strength <= 0.01f) return bitmap
-        val radius = TEXTURE_EDGE * 0.55f
+        val radius = TEXTURE_EDGE * 0.10f
         val glow = RadialGradient(
             TEXTURE_EDGE / 2f,
             TEXTURE_EDGE / 2f,
             radius,
             intArrayOf(
-                Color.argb((235 * strength).toInt().coerceIn(0, 255), 255, 255, 255),
-                Color.argb((110 * strength).toInt().coerceIn(0, 255), 255, 255, 255),
+                Color.argb((255 * strength).toInt().coerceIn(0, 255), 255, 255, 255),
+                Color.argb((30 * strength).toInt().coerceIn(0, 255), 255, 255, 255),
                 Color.TRANSPARENT,
             ),
-            floatArrayOf(0f, 0.5f, 1f),
+            floatArrayOf(0f, 0.25f, 1f),
             Shader.TileMode.CLAMP,
         )
         val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { shader = glow }
