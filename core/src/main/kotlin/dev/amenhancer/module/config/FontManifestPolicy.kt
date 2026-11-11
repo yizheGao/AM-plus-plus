@@ -16,14 +16,25 @@ object FontManifestPolicy {
     fun isValidSha256(sha256: String): Boolean = sha256Pattern.matches(sha256)
 
     fun sanitize(manifest: LyricsFontManifest): LyricsFontManifest {
-        if (!manifest.enabled) return LyricsFontManifest.disabled()
-        if (!isValidFileId(manifest.fileId)) return LyricsFontManifest.disabled()
-        if (manifest.sizeBytes <= 0L) {
-            return LyricsFontManifest.disabled()
+        val metadataValid = isValidFileId(manifest.fileId) &&
+            manifest.sizeBytes > 0L &&
+            isValidSha256(manifest.sha256)
+        if (!manifest.enabled) {
+            // A retained import stays selectable while the native font is applied,
+            // so the two fonts coexist instead of the import being discarded.
+            if (!manifest.nativeSelected || !metadataValid) return LyricsFontManifest.disabled()
+            return manifest.copy(
+                enabled = false,
+                nativeSelected = true,
+                displayName = sanitizeDisplayName(manifest.displayName),
+                sha256 = manifest.sha256.lowercase(),
+            )
         }
-        if (!isValidSha256(manifest.sha256)) return LyricsFontManifest.disabled()
+        if (!metadataValid) return LyricsFontManifest.disabled()
 
         return manifest.copy(
+            enabled = true,
+            nativeSelected = false,
             displayName = sanitizeDisplayName(manifest.displayName),
             sha256 = manifest.sha256.lowercase(),
         )

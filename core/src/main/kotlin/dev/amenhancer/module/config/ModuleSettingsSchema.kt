@@ -67,6 +67,12 @@ object ModuleSettingsSchema {
                 ModuleSettings.MAX_PHONE_LIQUID_GLASS_MINI_SINK_BOUNCE_DP,
             ) ?: EnhancementDefaults.GLASS_MINI_SINK_BOUNCE_DP,
         futureBlurEnabled = values.boolean(KEY_FUTURE_BLUR, default = true),
+        dualPaneHidePlayedLyricsEnabled = values.boolean(
+            KEY_DUAL_PANE_HIDE_PLAYED_LYRICS,
+            default = false,
+        ),
+        lyricsFontBoldEnabled = values.boolean(KEY_LYRIC_FONT_BOLD, default = false),
+        lyricEdgeFeatherEnabled = values.boolean(KEY_LYRIC_EDGE_FEATHER, default = true),
         cjkKaraokeAnimationEnabled = values.boolean(
             KEY_CJK_KARAOKE_ANIMATION_ENABLED,
             default = true,
@@ -156,6 +162,9 @@ object ModuleSettingsSchema {
                     settings.phoneLiquidGlassMiniSinkBounceDp,
                 ),
             KEY_FUTURE_BLUR to settings.futureBlurEnabled,
+            KEY_DUAL_PANE_HIDE_PLAYED_LYRICS to settings.dualPaneHidePlayedLyricsEnabled,
+            KEY_LYRIC_FONT_BOLD to settings.lyricsFontBoldEnabled,
+            KEY_LYRIC_EDGE_FEATHER to settings.lyricEdgeFeatherEnabled,
             KEY_CJK_KARAOKE_ANIMATION_ENABLED to settings.cjkKaraokeAnimationEnabled,
             KEY_LYRIC_EFFECTS_OPTIMIZATION_ENABLED to settings.lyricEffectsOptimizationEnabled,
             KEY_NAVIGATION_COMPENSATION to settings.navigationCompensationEnabled,
@@ -195,6 +204,7 @@ object ModuleSettingsSchema {
         val safe = FontManifestPolicy.sanitize(manifest)
         return linkedMapOf(
             KEY_FONT_ENABLED to safe.enabled,
+            KEY_FONT_NATIVE_SELECTED to safe.nativeSelected,
             KEY_FONT_FILE_ID to safe.fileId,
             KEY_FONT_DISPLAY_NAME to safe.displayName,
             KEY_FONT_SIZE_BYTES to safe.sizeBytes,
@@ -255,6 +265,7 @@ object ModuleSettingsSchema {
     private fun Map<String, *>.fontManifest(): LyricsFontManifest {
         val raw = LyricsFontManifest(
             enabled = boolean(KEY_FONT_ENABLED, default = false),
+            nativeSelected = boolean(KEY_FONT_NATIVE_SELECTED, default = false),
             fileId = string(KEY_FONT_FILE_ID),
             displayName = string(KEY_FONT_DISPLAY_NAME),
             sizeBytes = long(KEY_FONT_SIZE_BYTES) ?: 0L,
@@ -368,6 +379,9 @@ object ModuleSettingsSchema {
         KEY_PHONE_LIQUID_GLASS_MINI_REBOUND_PERCENT,
         KEY_PHONE_LIQUID_GLASS_MINI_SINK_BOUNCE_DP,
         KEY_FUTURE_BLUR,
+        KEY_DUAL_PANE_HIDE_PLAYED_LYRICS,
+        KEY_LYRIC_FONT_BOLD,
+        KEY_LYRIC_EDGE_FEATHER,
         KEY_CJK_KARAOKE_ANIMATION_ENABLED,
         KEY_LYRIC_EFFECTS_OPTIMIZATION_ENABLED,
         KEY_NAVIGATION_COMPENSATION,
@@ -423,6 +437,9 @@ object ModuleSettingsSchema {
     private const val KEY_PHONE_LIQUID_GLASS_MINI_SINK_BOUNCE_DP =
         "phone_liquid_glass_mini_sink_bounce_dp"
     private const val KEY_FUTURE_BLUR = "future_blur_enabled"
+    private const val KEY_DUAL_PANE_HIDE_PLAYED_LYRICS = "dual_pane_hide_played_lyrics_enabled"
+    private const val KEY_LYRIC_FONT_BOLD = "lyrics_font_bold_enabled"
+    private const val KEY_LYRIC_EDGE_FEATHER = "lyric_edge_feather_enabled"
     private const val KEY_STARTUP_PAGE_PREWARM = "startup_page_prewarm_enabled"
     private const val KEY_CJK_KARAOKE_ANIMATION_ENABLED = "cjk_karaoke_animation_enabled"
     private const val KEY_LYRIC_EFFECTS_OPTIMIZATION_ENABLED = "lyric_effects_optimization_enabled"
@@ -447,6 +464,7 @@ object ModuleSettingsSchema {
     private const val LLM_LYRICS_THINKING_FORMAT_SCHEMA_VERSION = 20
     private const val KEY_LEGACY_ONLINE_LYRIC_REPLACEMENT = "online_lyric_replacement_enabled"
     private const val KEY_FONT_ENABLED = "lyrics_font_enabled"
+    private const val KEY_FONT_NATIVE_SELECTED = "lyrics_font_native_selected"
     private const val KEY_FONT_FILE_ID = "lyrics_font_file_id"
     private const val KEY_FONT_DISPLAY_NAME = "lyrics_font_display_name"
     private const val KEY_FONT_SIZE_BYTES = "lyrics_font_size_bytes"

@@ -39,6 +39,8 @@ internal interface EmbeddedSettingsController {
         EmbeddedActionResult.Failed(ModuleText.LYRICS_MANAGER_UNAVAILABLE.text())
     fun importFont(uri: Uri): EmbeddedActionResult = EmbeddedActionResult.Failed(ModuleText.FONT_IMPORT_UNAVAILABLE.text())
     fun clearFont(): EmbeddedActionResult = EmbeddedActionResult.Failed(ModuleText.FONT_MANAGER_UNAVAILABLE.text())
+    /** Applies the host lyric font while keeping the imported font available. */
+    fun selectNativeFont(): EmbeddedActionResult = EmbeddedActionResult.Failed(ModuleText.FONT_MANAGER_UNAVAILABLE.text())
     fun importTtml(
         uri: Uri,
         appleMusicId: Long,

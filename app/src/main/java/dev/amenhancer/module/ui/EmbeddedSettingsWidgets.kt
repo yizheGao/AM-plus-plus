@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,29 +30,24 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.amenhancer.module.i18n.ModuleText
 import kotlin.math.roundToInt
-import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.SmallTitleDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SliderPreference
-import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-internal val EmbeddedPreferencePadding = BasicComponentDefaults.InsideMargin
+internal val EmbeddedPreferencePadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp)
 
 @Composable
 internal fun EmbeddedSettingsGroup(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
-) = Card(modifier = modifier.fillMaxWidth(), content = content)
+) = AppleGroup(modifier = modifier, content = content)
 
 @Composable
 internal fun EmbeddedSettingsSection(
@@ -62,27 +55,12 @@ internal fun EmbeddedSettingsSection(
     summary: String? = null,
     endAction: (@Composable () -> Unit)? = null,
 ) {
-    val layoutDirection = LocalLayoutDirection.current
-    val titlePadding = SmallTitleDefaults.InsideMargin
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            SmallTitle(text = title)
-            if (summary != null) Text(
-                text = summary,
-                modifier = Modifier.padding(
-                    start = titlePadding.calculateStartPadding(layoutDirection),
-                    end = titlePadding.calculateEndPadding(layoutDirection),
-                    bottom = titlePadding.calculateBottomPadding(),
-                ),
-                style = MiuixTheme.textStyles.body2,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
-        }
-        if (endAction != null) {
-            Box(Modifier.padding(end = 8.dp)) { endAction() }
+    if (endAction == null) {
+        AppleSection(title = title, summary = summary)
+    } else {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) { AppleSection(title = title, summary = summary) }
+            Box(Modifier.padding(end = 16.dp)) { endAction() }
         }
     }
 }
@@ -96,25 +74,13 @@ internal fun EmbeddedSettingSwitch(
     icon: EmbeddedSvgIcon? = null,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    SwitchPreference(
-        checked = checked,
-        onCheckedChange = onCheckedChange,
+    AppleSwitchRow(
         title = title,
         summary = summary,
+        checked = checked,
         enabled = enabled,
-        startAction = if (icon == null) null else {
-            {
-                EmbeddedSettingsIcon(
-                    icon,
-                    modifier = Modifier.size(24.dp),
-                    tint = if (enabled) {
-                        MiuixTheme.colorScheme.onSurfaceVariantSummary
-                    } else {
-                        MiuixTheme.colorScheme.disabledOnSecondaryVariant
-                    },
-                )
-            }
-        },
+        icon = icon,
+        onCheckedChange = onCheckedChange,
     )
 }
 
@@ -126,24 +92,11 @@ internal fun EmbeddedSettingLink(
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
-    val start: (@Composable () -> Unit)? = if (icon == null) null else {
-        {
-            EmbeddedSettingsIcon(
-                icon,
-                modifier = Modifier.size(24.dp),
-                tint = if (enabled) {
-                    MiuixTheme.colorScheme.onSurfaceVariantSummary
-                } else {
-                    MiuixTheme.colorScheme.disabledOnSecondaryVariant
-                },
-            )
-        }
-    }
-    ArrowPreference(
+    AppleLinkRow(
         title = title,
         summary = summary,
+        icon = icon,
         enabled = enabled,
-        startAction = start,
         onClick = onClick,
     )
 }
@@ -152,9 +105,10 @@ internal fun EmbeddedSettingLink(
 internal fun EmbeddedSettingsNotice(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
-        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        style = MiuixTheme.textStyles.body2,
-        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        modifier = modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 8.dp),
+        color = AppleStyle.secondaryLabel(),
+        fontSize = 13.sp,
+        lineHeight = 17.sp,
     )
 }
 
@@ -163,7 +117,7 @@ internal fun EmbeddedSettingsIcon(
     icon: EmbeddedSvgIcon,
     contentDescription: String? = null,
     modifier: Modifier = Modifier,
-    tint: Color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+    tint: Color = AppleStyle.secondaryLabel(),
 ) {
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val mirror = rtl && (icon == EmbeddedSvgIcon.Back || icon == EmbeddedSvgIcon.ChevronRight)
@@ -193,12 +147,8 @@ internal fun EmbeddedSettingsIconAction(
     ) {
         EmbeddedSettingsIcon(
             icon = icon,
-            modifier = Modifier.size(24.dp),
-            tint = if (enabled) {
-                MiuixTheme.colorScheme.onBackground
-            } else {
-                MiuixTheme.colorScheme.disabledOnSecondaryVariant
-            },
+            modifier = Modifier.size(22.dp),
+            tint = if (enabled) AppleStyle.accent() else AppleStyle.secondaryLabel(),
         )
     }
 }
@@ -242,29 +192,14 @@ internal fun EmbeddedSettingsHost.EmbeddedSettingRange(
     defaultValue: Int? = null,
     onChanged: (Int) -> Unit,
 ) {
-    var preview by remember(value, range) { mutableIntStateOf(value.coerceIn(range)) }
-    SliderPreference(
-        value = preview.toFloat(),
-        onValueChange = { preview = it.roundToInt().coerceIn(range) },
-        modifier = Modifier.fillMaxWidth(),
+    AppleSliderRow(
         title = title,
         summary = summary,
-        valueText = "$preview$unit",
-        endActions = if (defaultValue == null) null else {
-            {
-                EmbeddedSettingsIconAction(
-                    EmbeddedSvgIcon.RestoreDefault,
-                    "$title, ${localizedText(ModuleText.RESET_DEFAULT)}",
-                ) {
-                    preview = defaultValue
-                    onChanged(defaultValue)
-                }
-            }
-        },
-        valueRange = range.first.toFloat()..range.last.toFloat(),
-        steps = (range.last - range.first - 1).coerceAtLeast(0),
-        onValueChangeFinished = { onChanged(preview) },
-        showKeyPoints = false,
+        value = value,
+        range = range,
+        unit = unit,
+        defaultValue = defaultValue,
+        onChanged = onChanged,
     )
 }
 

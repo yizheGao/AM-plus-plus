@@ -53,7 +53,7 @@ class LyricsTypefaceStructuralRegressionTest {
     fun `a failed replacement skips only that view instead of the whole tree`() {
         val source = source("LyricsTypefaceSession.kt")
 
-        assertTrue(source.contains("styleTypeface(importedBase, originalStyle) ?: return@forEach"))
+        assertTrue(source.contains("styleTypeface(importedBase, targetStyle) ?: return@forEach"))
         assertTrue(source.contains("failedTypefaceStyles"))
     }
 

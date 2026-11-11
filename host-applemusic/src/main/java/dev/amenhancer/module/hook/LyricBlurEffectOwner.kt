@@ -2,6 +2,8 @@
 package dev.amenhancer.module.hook
 
 import android.content.Context
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.RenderEffect
 import android.graphics.Shader
 import android.util.AttributeSet
@@ -11,16 +13,22 @@ import java.util.WeakHashMap
 
 /** Records the baseline before lyric Views exist; never uses a hidden RenderEffect getter. */
 internal class LyricBlurEffectOwner(private val hostChanged: (View) -> Unit) : AutoCloseable {
+    private companion object {
+        /** 1% steps keep the colour-matrix cache small while the fade runs. */
+        const val ALPHA_STEP = 4
+    }
     private class Record(var native: RenderEffect?) {
         var owner: Any? = null
         var lastWriter: Any? = null
         var hostRevision = 0L
         var appliedRevision = -1L
         var radius = -1
+        var alpha = 100
         var composed: RenderEffect? = null
     }
     private val records = Collections.synchronizedMap(WeakHashMap<View, Record>())
     private val effects = HashMap<Int, RenderEffect>()
+    private val alphaEffects = HashMap<Int, RenderEffect>()
     private val writing = ThreadLocal.withInitial { false }
 
     fun install(scope: HookRegistrationScope) {
@@ -60,22 +68,37 @@ internal class LyricBlurEffectOwner(private val hostChanged: (View) -> Unit) : A
         return true
     }
 
-    fun apply(view: View, owner: Any, radius: Int): Boolean {
+    /**
+     * [alphaPercent] is folded into the effect chain as an alpha-only colour
+     * matrix rather than written to `View.alpha`, so host word animations that
+     * write alpha every frame cannot overwrite it and are not disturbed.
+     */
+    fun apply(view: View, owner: Any, radius: Int, alphaPercent: Int = 100): Boolean {
         val record = records[view]?.takeIf { it.owner === owner } ?: return false
         val quantized = radius.coerceIn(0, 32)
-        if (record.lastWriter === owner && record.radius == quantized && record.appliedRevision == record.hostRevision) return true
+        val alpha = alphaPercent.coerceIn(0, 100).let { (it / ALPHA_STEP) * ALPHA_STEP }
+        if (record.lastWriter === owner && record.radius == quantized && record.alpha == alpha &&
+            record.appliedRevision == record.hostRevision) return true
         val blur = if (quantized == 0) null else effects.getOrPut(quantized) {
             RenderEffect.createBlurEffect(quantized.toFloat(), quantized.toFloat(), Shader.TileMode.DECAL)
         }
         val baseline = record.native
-        val composed = when {
+        val shaped = when {
             blur == null -> baseline
             baseline == null -> blur
             else -> RenderEffect.createChainEffect(blur, baseline)
         }
+        val composed = if (alpha >= 100) shaped else {
+            val fade = alphaEffects.getOrPut(alpha) {
+                val matrix = ColorMatrix().apply { setScale(1f, 1f, 1f, alpha / 100f) }
+                RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(matrix))
+            }
+            if (shaped == null) fade else RenderEffect.createChainEffect(fade, shaped)
+        }
         moduleWrite { view.setRenderEffect(composed) }
         record.lastWriter = owner
         record.radius = quantized
+        record.alpha = alpha
         record.appliedRevision = record.hostRevision
         record.composed = composed
         return true
@@ -87,6 +110,7 @@ internal class LyricBlurEffectOwner(private val hostChanged: (View) -> Unit) : A
         record.owner = null
         record.lastWriter = null
         record.radius = -1
+        record.alpha = 100
         record.composed = null
     }
 
@@ -101,6 +125,7 @@ internal class LyricBlurEffectOwner(private val hostChanged: (View) -> Unit) : A
             .forEach { (view, owner) -> if (owner != null) release(view, owner) }
         records.clear()
         effects.clear()
+        alphaEffects.clear()
         writing.remove()
     }
 }

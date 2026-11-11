@@ -19,7 +19,7 @@ internal class LyricBlurViewSession(
     viewGeneration: Long,
     private val contract: AppleMusicLyricBlurContract,
     effects: LyricBlurEffectOwner,
-    private val offsetPx: Int,
+    settingsProvider: () -> dev.amenhancer.module.model.ModuleSettings,
     observeModel: (LyricBlurViewSession, Any) -> Unit,
 ) : AutoCloseable {
     val port = AppleMusicLyricBlurHostPort(owner, contract,
@@ -30,7 +30,7 @@ internal class LyricBlurViewSession(
     private val rootRef = WeakReference(root)
     private val handler = Handler(Looper.getMainLooper())
     private val choreographer = Choreographer.getInstance()
-    private val renderer = LyricBlurViewRenderer(effects)
+    private val renderer = LyricBlurViewRenderer(effects, settingsProvider)
     private val diagnostics = LyricBlurDiagnostics(contract.profile.id)
     private var state = LyricBlurState(LyricBlurEpoch(viewGeneration))
     @Volatile var epoch: LyricBlurEpoch = state.epoch
@@ -236,7 +236,7 @@ internal class LyricBlurViewSession(
                 else -> Unit
             }
             if (targetsDirty || previousState != state || rows != freshRows) {
-                renderer.update(state, freshRows, offsetPx, SystemClock.uptimeMillis())
+                renderer.update(state, freshRows, SystemClock.uptimeMillis())
             }
             rows = freshRows
             targetsDirty = false

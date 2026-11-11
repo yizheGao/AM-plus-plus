@@ -16,7 +16,7 @@ import io.github.proify.lyricon.amprovider.xposed.internal.WeakIdentityMap
 internal class AppleMusicLyricBlurRuntime(
     private val contract: AppleMusicLyricBlurContract,
     private val effects: LyricBlurEffectOwner,
-    private val offsetPx: Int,
+    private val settingsProvider: () -> dev.amenhancer.module.model.ModuleSettings,
     private val scope: HookRegistrationScope,
 ) : AutoCloseable {
     private data class WordOwner(val session: WeakReference<LyricBlurViewSession>, val view: Long, val document: Long)
@@ -36,7 +36,9 @@ internal class AppleMusicLyricBlurRuntime(
             if (owner != null && root != null) onMain {
                 val controller = controllers.getOrPut(owner) {
                     HostViewSessionController { view, _ ->
-                        LyricBlurViewSession(owner, view, ++viewSequence, contract, effects, offsetPx, ::observeWord)
+                        LyricBlurViewSession(
+                            owner, view, ++viewSequence, contract, effects, settingsProvider, ::observeWord,
+                        )
                             .also { session -> sessions[owner] = session; session.start(); rememberCallbacks(session) }
                     }
                 }

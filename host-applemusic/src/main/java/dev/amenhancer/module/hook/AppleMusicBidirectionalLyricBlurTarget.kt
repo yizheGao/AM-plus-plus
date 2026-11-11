@@ -22,7 +22,7 @@ internal class AppleMusicBidirectionalLyricBlurTarget(
             lateinit var runtime: AppleMusicLyricBlurRuntime
             val effects = LyricBlurEffectOwner { view -> runtime.effectChanged(view) }
             runtime = AppleMusicLyricBlurRuntime(contract, effects,
-                TargetConfigClient.currentSettings().lyricBlurRadiusOffsetPx, scope)
+                { TargetConfigClient.currentSettings() }, scope)
             effects.install(scope)
             runtime.install()
             scope.activate()

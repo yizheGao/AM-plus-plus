@@ -147,17 +147,42 @@ object LyricBlurReducer {
     }
 }
 
-data class LyricBlurTarget(val focusRadius: Float, val edgeWeight: Float)
+/**
+ * [hidden] marks a lyric row whose line has already been sung. Rendering
+ * decides whether to hide it; the policy only reports the fact, so the same
+ * target stays valid for hosts that keep the row visible.
+ */
+data class LyricBlurTarget(
+    val focusRadius: Float,
+    val edgeWeight: Float,
+    val hidden: Boolean = false,
+)
 
 object LyricBlurPolicy {
-    fun targets(state: LyricBlurState, rows: List<LyricRowSnapshot>, offsetPx: Int): List<LyricBlurTarget> {
+    fun targets(
+        state: LyricBlurState,
+        rows: List<LyricRowSnapshot>,
+        offsetPx: Int,
+        hideSungLines: Boolean = false,
+    ): List<LyricBlurTarget> {
         val protected = state.protectedLineIds
         val anchor = state.focusAnchor
-        return rows.map { target(state, it, offsetPx, protected, anchor) }
+        val firstLiveOrdinal = anchorFirstOrdinal(anchor)
+        return rows.map { target(state, it, offsetPx, protected, anchor, hideSungLines, firstLiveOrdinal) }
+    }
+
+    /** Lowest ordinal the focus still treats as live; null when the focus is unknown. */
+    private fun anchorFirstOrdinal(anchor: LyricFocusAnchor): Int? = when (anchor) {
+        LyricFocusAnchor.None -> null
+        is LyricFocusAnchor.Lines -> anchor.ordinals.minOrNull()
+        is LyricFocusAnchor.Ending -> anchor.ordinals.minOrNull()
+        LyricFocusAnchor.Prelude -> 0
+        is LyricFocusAnchor.Instrumental -> anchor.beforeOrdinal
     }
 
     private fun target(state: LyricBlurState, row: LyricRowSnapshot, offsetPx: Int,
-        protectedIds: Set<Int>, anchor: LyricFocusAnchor): LyricBlurTarget {
+        protectedIds: Set<Int>, anchor: LyricFocusAnchor, hideSungLines: Boolean,
+        firstLiveOrdinal: Int?): LyricBlurTarget {
         if (row.kind == LyricRowKind.UNKNOWN || row.kind == LyricRowKind.INSTRUMENTAL ||
             (row.kind == LyricRowKind.LYRIC && (row.nativeLineId == null || row.lyricOrdinal == null))) {
             return LyricBlurTarget(0f, 0f)
@@ -166,6 +191,10 @@ object LyricBlurPolicy {
         val protected = row.kind == LyricRowKind.LYRIC && row.nativeLineId in protectedIds
         if (protected) return LyricBlurTarget(0f, 0f)
         val ordinal = row.lyricOrdinal ?: return LyricBlurTarget(0f, 0f)
+        if (hideSungLines && row.kind == LyricRowKind.LYRIC && firstLiveOrdinal != null &&
+            ordinal < firstLiveOrdinal) {
+            return LyricBlurTarget(0f, 0f, hidden = true)
+        }
         if (anchor == LyricFocusAnchor.Prelude && row.kind == LyricRowKind.LYRIC && ordinal == 0) {
             return LyricBlurTarget(0f, 0f)
         }

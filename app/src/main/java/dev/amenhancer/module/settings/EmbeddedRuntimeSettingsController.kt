@@ -1,5 +1,7 @@
 package dev.amenhancer.module.settings
 
+import dev.amenhancer.module.hook.ModuleSettingsRevision
+
 import dev.amenhancer.module.i18n.ModuleText
 
 import dev.amenhancer.module.ui.*
@@ -52,7 +54,13 @@ internal class EmbeddedRuntimeSettingsController(
 
     override fun currentSettings(): ModuleSettings = session.settings()
 
-    override fun saveOrdinarySettings(settings: ModuleSettings): Boolean = session.saveSettings(settings)
+    override fun saveOrdinarySettings(settings: ModuleSettings): Boolean {
+        val saved = session.saveSettings(settings)
+        // Lyric effects read the store live; bump so the renderer re-reads it
+        // on the next frame instead of waiting for a host restart.
+        if (saved) ModuleSettingsRevision.bump()
+        return saved
+    }
 
     override fun currentSongDetails(): CurrentSongDetails? = currentSong()
 
@@ -110,6 +118,13 @@ internal class EmbeddedRuntimeSettingsController(
     override fun clearFont(): EmbeddedActionResult =
         if (content.clearFont()) {
             EmbeddedActionResult.Done(ModuleText.FONT_CLEARED.text())
+        } else {
+            EmbeddedActionResult.Failed(ModuleText.FONT_CLEAR_FAILED.text())
+        }
+
+    override fun selectNativeFont(): EmbeddedActionResult =
+        if (content.selectNativeFont()) {
+            EmbeddedActionResult.Done(ModuleText.NATIVE_FONT_SELECTED.text())
         } else {
             EmbeddedActionResult.Failed(ModuleText.FONT_CLEAR_FAILED.text())
         }

@@ -71,21 +71,43 @@ internal class EmbeddedContentManager(
         result
     }
 
-    /** Disables the font pointer, then best-effort removes its unreferenced file. */
+    /**
+     * Selects which retained font is applied.
+     *
+     * Disabling keeps the imported file and its metadata in place, so the
+     * Apple Music default font and the import stay selectable side by side;
+     * only [clearFont] retires the file.
+     */
     fun setFontEnabled(enabled: Boolean): Boolean = synchronized(mutationLock) {
         val previous = session.settings().fontManifest
-        if (enabled == previous.enabled) return@synchronized true
-        if (!enabled && !session.saveFontManifest(LyricsFontManifest.disabled())) return@synchronized false
-        true.also {
-            if (!enabled) {
-                retireFile(previous.fileId, replacementFileId = null) {
-                    FontManifestPolicy.isValidFileId(it)
-                }
-            }
+        if (enabled) {
+            if (previous.enabled) return@synchronized true
+            if (!previous.hasImport) return@synchronized false
+            return@synchronized session.saveFontManifest(
+                previous.copy(enabled = true, nativeSelected = false),
+            )
         }
+        if (!previous.enabled && previous.nativeSelected) return@synchronized true
+        val next = if (previous.hasImport) {
+            previous.copy(enabled = false, nativeSelected = true)
+        } else {
+            LyricsFontManifest.disabled()
+        }
+        session.saveFontManifest(next)
     }
 
-    fun clearFont(): Boolean = setFontEnabled(false)
+    /** Applies the host's own lyric font while retaining any imported font. */
+    fun selectNativeFont(): Boolean = setFontEnabled(false)
+
+    /** Disables the font pointer, then best-effort removes its unreferenced file. */
+    fun clearFont(): Boolean = synchronized(mutationLock) {
+        val previous = session.settings().fontManifest
+        if (!session.saveFontManifest(LyricsFontManifest.disabled())) return@synchronized false
+        retireFile(previous.fileId, replacementFileId = null) {
+            FontManifestPolicy.isValidFileId(it)
+        }
+        true
+    }
 
     fun lyricsManifest(): CustomLyricsManifest = synchronized(mutationLock) {
         currentLyricsManifest()

@@ -82,6 +82,10 @@ internal class LyricsTypefaceSession : LyricsTypefaceResourceBinding {
     @Volatile
     private var active = false
 
+    /** Synthetic bold applied on top of the original or the imported face. */
+    @Volatile
+    private var boldActive = false
+
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
     private val backgroundExecutor: ExecutorService by lazy {
         Executors.newSingleThreadExecutor { runnable ->
@@ -108,19 +112,27 @@ internal class LyricsTypefaceSession : LyricsTypefaceResourceBinding {
      * background thread. The target capability can install while [Loading].
      */
     fun prepare(): LyricsTypefacePreparation = synchronized(lock) {
+        val activeConfig = config
+            ?: return@synchronized LyricsTypefacePreparation.Failed(
+                "Lyrics font configuration was unavailable",
+            )
+        val settings = activeConfig.settings()
+        boldActive = settings.lyricsFontBoldEnabled
         when (loadController.phase()) {
             LyricsTypefaceLoadController.Phase.READY -> LyricsTypefacePreparation.Ready
             LyricsTypefaceLoadController.Phase.LOADING -> LyricsTypefacePreparation.Loading
-            LyricsTypefaceLoadController.Phase.FAILED -> LyricsTypefacePreparation.Failed(
-                loadController.failureMessage().orEmpty(),
-            )
+            LyricsTypefaceLoadController.Phase.FAILED ->
+                // Bold does not depend on the imported file, so a failed import
+                // must not take the bold pass down with it.
+                if (boldActive) LyricsTypefacePreparation.Ready
+                else LyricsTypefacePreparation.Failed(loadController.failureMessage().orEmpty())
             LyricsTypefaceLoadController.Phase.IDLE -> {
-                val activeConfig = config
-                    ?: return@synchronized LyricsTypefacePreparation.Failed(
-                        "Lyrics font configuration was unavailable",
-                    )
-                val manifest = activeConfig.settings().fontManifest
-                if (!manifest.enabled) return@synchronized LyricsTypefacePreparation.Disabled
+                val manifest = settings.fontManifest
+                if (!manifest.enabled) {
+                    // Nothing to load yet: stay installed so a later switch can
+                    // apply without a host restart.
+                    return@synchronized LyricsTypefacePreparation.Loading
+                }
                 loadController.start()
                 startBackgroundLoad(activeConfig, manifest)
                 LyricsTypefacePreparation.Loading
@@ -198,7 +210,7 @@ internal class LyricsTypefaceSession : LyricsTypefaceResourceBinding {
             val message = when (state) {
                 dev.amenhancer.module.model.FeatureState.ACTIVE -> "歌词字体已加载并可应用"
                 dev.amenhancer.module.model.FeatureState.FAILED -> "保留原字体：${loadController.failureMessage()}"
-                else -> "Hook 已安装，等待后台字体加载"
+                else -> if (boldActive) "歌词加粗已启用，等待后台字体加载" else "Hook 已安装，等待后台字体加载"
             }
             config?.reportHealth(dev.amenhancer.module.model.FeatureHealth(
                 dev.amenhancer.module.ModuleConstants.FEATURE_LYRICS_TYPEFACE, state, message,
@@ -314,8 +326,14 @@ internal class LyricsTypefaceSession : LyricsTypefaceResourceBinding {
         if (!active) return
         synchronized(lock) {
             val importedBase = loadController.readyValue()
+            val bold = config?.settings()?.lyricsFontBoldEnabled ?: boldActive
             if (importedBase != null) {
-                applyTypefaceTree(root, importedBase)
+                applyTypefaceTree(root, importedBase, bold)
+                return
+            }
+            if (bold) {
+                // Bold-only pass: no imported face, the host's own glyphs stay.
+                applyBoldTree(root)
                 return
             }
             // The load is still in flight: remember the root so the completed
@@ -326,18 +344,32 @@ internal class LyricsTypefaceSession : LyricsTypefaceResourceBinding {
         }
     }
 
-    private fun applyTypefaceTree(root: View, importedBase: Typeface) {
+    private fun applyTypefaceTree(root: View, importedBase: Typeface, bold: Boolean) {
         val textViews = mutableListOf<TextView>()
         collectTextViews(root, textViews)
         val replacements = ArrayList<Pair<TextView, Typeface>>(textViews.size)
         textViews.forEach { view ->
             val originalStyle = view.typeface?.style ?: Typeface.NORMAL
-            val replacement = styleTypeface(importedBase, originalStyle) ?: return@forEach
+            val targetStyle = if (bold) originalStyle or Typeface.BOLD else originalStyle
+            val replacement = styleTypeface(importedBase, targetStyle) ?: return@forEach
+            if (bold) view.paint.isFakeBoldText = true
             // Already the target instance: skip the redundant assignment.
             if (view.typeface === replacement) return@forEach
             replacements += view to replacement
         }
         replacements.forEach { (view, replacement) -> view.typeface = replacement }
+    }
+
+    /**
+     * Bold without an imported face: thickening the host paint keeps the
+     * original family and only changes the weight, and survives setText.
+     */
+    private fun applyBoldTree(root: View) {
+        val textViews = mutableListOf<TextView>()
+        collectTextViews(root, textViews)
+        textViews.forEach { view ->
+            if (!view.paint.isFakeBoldText) view.paint.isFakeBoldText = true
+        }
     }
 
     /** One Typeface per style for the imported base; failures skip only that view. */

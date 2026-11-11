@@ -468,6 +468,12 @@ private fun EmbeddedSettingsHost.EmbeddedSettingsCategory(
                     settings.cjkKaraokeAnimationEnabled, EmbeddedSvgIcon.Karaoke) { value -> onEdit { it.copy(cjkKaraokeAnimationEnabled = value) } }
                 Setting(ModuleText.LYRIC_EFFECTS_OPTIMIZATION, ModuleText.LYRIC_EFFECTS_OPTIMIZATION_SUMMARY,
                     settings.lyricEffectsOptimizationEnabled, EmbeddedSvgIcon.LyricEffects) { value -> onEdit { it.copy(lyricEffectsOptimizationEnabled = value) } }
+                Setting(ModuleText.LYRIC_EDGE_FEATHER, ModuleText.LYRIC_EDGE_FEATHER_SUMMARY,
+                    settings.lyricEdgeFeatherEnabled, EmbeddedSvgIcon.LyricsBlur) { value -> onEdit { it.copy(lyricEdgeFeatherEnabled = value) } }
+                Setting(ModuleText.TABLET_HIDE_PLAYED_LYRICS, ModuleText.TABLET_HIDE_PLAYED_LYRICS_SUMMARY,
+                    settings.dualPaneHidePlayedLyricsEnabled, EmbeddedSvgIcon.LyricsBlur) { value -> onEdit { it.copy(dualPaneHidePlayedLyricsEnabled = value) } }
+                Setting(ModuleText.LYRICS_FONT_BOLD, ModuleText.LYRICS_FONT_BOLD_SUMMARY,
+                    settings.lyricsFontBoldEnabled, EmbeddedSvgIcon.Document) { value -> onEdit { it.copy(lyricsFontBoldEnabled = value) } }
                 EmbeddedSettingRange(
                     title = localizedText(ModuleText.LYRIC_BLUR_OFFSET),
                     value = settings.lyricBlurRadiusOffsetPx,
@@ -485,8 +491,13 @@ private fun EmbeddedSettingsHost.EmbeddedSettingsCategory(
                     if (font.enabled) font.displayName else localizedText(ModuleText.ORIGINAL_FONT), EmbeddedSvgIcon.Document) {
                     launchSafPicker(activity, EmbeddedSafOperation.Font, "*/*", EMBEDDED_FONT_MIME_TYPES)
                 }
+                EmbeddedSettingLink(localizedText(ModuleText.APPLE_MUSIC_NATIVE_FONT),
+                    localizedText(ModuleText.NATIVE_FONT_SUMMARY), EmbeddedSvgIcon.RestoreDefault,
+                    enabled = font.hasImport && font.enabled) {
+                    runAsync(activity, controller::selectNativeFont)
+                }
                 EmbeddedSettingLink(localizedText(ModuleText.RESTORE_FONT), icon = EmbeddedSvgIcon.RestoreDefault,
-                    enabled = font.enabled) {
+                    enabled = font.hasImport) {
                     runAsync(activity, controller::clearFont)
                 }
             }

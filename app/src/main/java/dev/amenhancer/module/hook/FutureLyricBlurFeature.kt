@@ -8,7 +8,9 @@ internal class FutureLyricBlurFeature : FeatureHook {
     override val key: String = ModuleConstants.FEATURE_FUTURE_BLUR
 
     override fun install(context: HookContext): FeatureInstallResult {
-        if (!context.config.settings().futureBlurEnabled) return FeatureInstallResult.disabled()
+        // Installed unconditionally: the blur switch, the sung-line fade and the
+        // edge feather are read live, so toggling them must not need a restart.
+        // The renderer gates the blur radius itself while the switch is off.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             return FeatureInstallResult.unsupported("Requires Android 12 or newer")
         }

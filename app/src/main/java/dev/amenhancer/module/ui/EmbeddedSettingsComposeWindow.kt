@@ -112,7 +112,12 @@ internal fun createEmbeddedSettingsDialog(
                             targetValue = if (showing) 1f else 0f,
                             animationSpec = tween(500, easing = NavProgrammaticEasing),
                         )
-                        if (!showing) dialog.dismiss()
+                        if (!showing) {
+                            // Closing the settings page is the "apply now" point:
+                            // nudge every live lyric effect to re-read the store.
+                            dev.amenhancer.module.hook.ModuleSettingsRevision.bump()
+                            dialog.dismiss()
+                        }
                     }
                     Box(
                         Modifier.fillMaxSize().drawBehind {
@@ -125,7 +130,7 @@ internal fun createEmbeddedSettingsDialog(
                                 val direction = if (rtl) -1f else 1f
                                 translationX = (direction * (1f - progress.value) * size.width).roundToInt().toFloat()
                             },
-                            containerColor = MiuixTheme.colorScheme.surface,
+                            containerColor = AppleStyle.groupedBackground(),
                             contentWindowInsets = WindowInsets(0, 0, 0, 0),
                         ) {
                             content(requestDismiss)

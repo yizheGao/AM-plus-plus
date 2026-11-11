@@ -55,6 +55,12 @@ data class ModuleSettings(
      */
     val phoneLiquidGlassMiniSinkBounceDp: Int = EnhancementDefaults.GLASS_MINI_SINK_BOUNCE_DP,
     val futureBlurEnabled: Boolean = true,
+    /** Hides already-sung lyric lines in the tablet dual-pane player once the next line starts. */
+    val dualPaneHidePlayedLyricsEnabled: Boolean = false,
+    /** Applies a synthetic bold face to player lyric text; works with the original or an imported font. */
+    val lyricsFontBoldEnabled: Boolean = false,
+    /** Vertical feather: rows fade out towards the top and bottom edge of the lyric viewport. */
+    val lyricEdgeFeatherEnabled: Boolean = true,
     /** Enables the native rush-gradient adaptation for CJK karaoke lyrics. */
     val cjkKaraokeAnimationEnabled: Boolean = true,
     /** Opt-in corrections for wrapped sweeps and main lyric highlighting; applied at host startup. */
@@ -227,11 +233,20 @@ enum class LlmLyricsThinkingEffort(val storageValue: String) {
 /** Shared, Android-free description of the font file selected by the user. */
 data class LyricsFontManifest(
     val enabled: Boolean = false,
+    /**
+     * True when the user picked Apple Music's own lyric font while an imported
+     * font is still retained. The retained file metadata keeps the import and
+     * the native font selectable side by side instead of deleting the import.
+     */
+    val nativeSelected: Boolean = false,
     val fileId: String = "",
     val displayName: String = "",
     val sizeBytes: Long = 0L,
     val sha256: String = "",
 ) {
+    /** True when an imported font file is retained, regardless of which font is applied. */
+    val hasImport: Boolean get() = fileId.isNotBlank() && sizeBytes > 0L
+
     companion object {
         fun disabled(): LyricsFontManifest = LyricsFontManifest()
     }

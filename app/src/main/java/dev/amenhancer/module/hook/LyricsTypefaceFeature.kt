@@ -7,9 +7,8 @@ internal class LyricsTypefaceFeature : FeatureHook {
     override val key: String = ModuleConstants.FEATURE_LYRICS_TYPEFACE
 
     override fun install(context: HookContext): FeatureInstallResult {
-        if (!context.config.settings().fontManifest.enabled) {
-            return FeatureInstallResult.disabled()
-        }
+        // Installed unconditionally: bold is read live on every apply, and an
+        // import that arrives later only needs the host to relayout a lyric row.
         return context.target.lyricsTypeface.install().toFeatureInstallResult()
     }
 }

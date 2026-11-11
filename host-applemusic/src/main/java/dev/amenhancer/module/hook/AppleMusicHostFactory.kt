@@ -53,6 +53,7 @@ object AppleMusicHostFactory {
         currentSong: CurrentSongIdentityCache = CurrentSongIdentityCache(),
         autoLyricsRuntime: AutoLyricsRuntime? = null,
     ): TargetAdaptation {
+        PlayerLyricsButtonsOrder.install(application)
         val build = targetBuild(application)
         val profile = checkNotNull(dev.amenhancer.host.applemusic.AppleMusicHostProfiles.find(build.packageName, build.versionName, build.versionCode))
         check(profile.family in setOf("legacy-activity", "fragment-content")) {

@@ -244,7 +244,6 @@ internal object TranslationsPopupOffsetHook {
     private fun shiftTranslationsPopupOffset(param: XC_MethodHook.MethodHookParam) {
         val popup = param.thisObject as? android.widget.PopupWindow ?: return
         val anchor = param.args.firstOrNull() as? View ?: return
-        if (!TabletModeQualifier.isEligible(anchor.context)) return
         val resources = anchor.resources
         val popupMenuId = resources.getIdentifier(
             TRANSLATIONS_POPUP_MENU,
@@ -280,6 +279,13 @@ internal object TranslationsPopupOffsetHook {
         }
         val originalYOffset = param.args[2] as? Int ?: return
         val overlapAnchor = runCatching { popup.overlapAnchor }.getOrDefault(false)
+        // Only lift the popup when the stock dropdown would leave the screen:
+        // the translation button now lives in the bottom action row.
+        val anchorLocation = IntArray(2)
+        anchor.getLocationOnScreen(anchorLocation)
+        val screenBottom = anchor.resources.displayMetrics.heightPixels
+        val dropTop = anchorLocation[1] + (if (overlapAnchor) 0 else anchor.height) + originalYOffset
+        if (dropTop + popupHeight <= screenBottom) return
         val shiftAmount = popupHeight + if (overlapAnchor) 0 else anchor.height
         val shiftedYOffset = originalYOffset - shiftAmount
         param.args[2] = shiftedYOffset

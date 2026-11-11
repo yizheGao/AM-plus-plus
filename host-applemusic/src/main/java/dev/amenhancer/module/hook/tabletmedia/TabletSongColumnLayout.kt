@@ -290,6 +290,8 @@ internal class TabletSongColumnLayout(
         return height
     }
     fun prepare(topInset: Int = insetTop, bottomInset: Int = insetBottom): Boolean {
+        // Skip only the transient tree that exists mid rotation.
+        if (dev.amenhancer.module.hook.RotationGuard.isChanging(player.context)) return false
         if (closed) return false
         states.values.forEach { it.changed = false }; columns.clear(); queueColumns.clear()
         fun visit(view: View) {
@@ -331,7 +333,11 @@ internal class TabletSongColumnLayout(
         val collaborator = find(column, "collaborator_pill")?.takeIf { it.visibility == View.VISIBLE }
         val extra = collaborator?.height ?: 0
         collaborator?.let { bounds(it, left, top + g.metadataTop, g.contentWidth, extra) }
-        val actions = listOf("list_left_icon", "list_favorite_icon", "emoji_button")
+        // Tablet landscape drops the favourite action: the dual-pane column
+        // already exposes library actions in the header, and the extra icon
+        // crowds the title row.
+        find(column, "list_favorite_icon")?.let { it.visibility = View.GONE }
+        val actions = listOf("list_left_icon", "emoji_button")
             .mapNotNull { find(column, it) }.filter { it.visibility == View.VISIBLE }
         val gap = css(8f)
         val textWidth = (g.contentWidth - actions.size * (g.menuSize + gap)).coerceAtLeast(1)
