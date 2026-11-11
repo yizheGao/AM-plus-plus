@@ -30,7 +30,7 @@ import kotlin.math.sin
  * own animation. Cost stays low because the source stays at 128 px.
  */
 internal object BackgroundPulse {
-    private const val ENABLED = true
+    private const val ENABLED = false
     private const val BACKGROUND_LAYER = "background_layers"
     private const val ARTWORK_ID = "fullplayerSongImage"
     private const val UPDATE_MS = 200L
@@ -91,8 +91,8 @@ internal object BackgroundPulse {
         attached = layer
         installCaptureHook(setArtwork)
         val animators = reflectAnimators(layer)
-        // Global breathing is not wanted: the background stays still and only
-        // flashes on detected beats (see BeatPulse).
+        runCatching { animators.forEach { if (!it.isRunning) it.start() } }
+        gateByPlayback(activity, animators)
         ModernXposedRuntime.log(
             "background pulse: driving ${layer.javaClass.simpleName} ${layer.width}x${layer.height}" +
                 " animators=${animators.size}",
@@ -108,7 +108,14 @@ internal object BackgroundPulse {
                     if (attached === layer) attached = null
                     return
                 }
-                if (pulse > 0.05f) flash(layer, setArtwork, pulse)
+                val musicActive = runCatching {
+                    (layer.context.getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager)
+                        ?.isMusicActive == true
+                }.getOrDefault(false)
+                if (musicActive && pulse > 0.05f) {
+                    flash(layer, setArtwork, pulse)
+                    pulse = 0f
+                }
                 val captured = hostTexture
                 if (captured != null) base = captured
                 if (base == null) base = findArtwork(activity, decor)
@@ -153,12 +160,34 @@ internal object BackgroundPulse {
         return out
     }
 
+    /**
+     * The host's animators run forever once started, so they must be paused when
+     * nothing is playing; otherwise the background keeps pulsing on a paused
+     * track.
+     */
+    private fun gateByPlayback(activity: Activity, animators: List<android.animation.ValueAnimator>) {
+        val audio = activity.getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager
+            ?: return
+        val check = object : Runnable {
+            override fun run() {
+                val playing = runCatching { audio.isMusicActive }.getOrDefault(false)
+                if (playing) {
+                    runCatching { animators.forEach { if (!it.isRunning) it.start() } }
+                } else {
+                    runCatching { animators.forEach { if (it.isRunning) it.pause() } }
+                }
+                handler.postDelayed(this, 250L)
+            }
+        }
+        handler.post(check)
+    }
+
     /** One short bright flash through the host's own blur pipeline. */
     private fun flash(layer: View, setArtwork: java.lang.reflect.Method, strength: Float) {
         val base = hostTexture ?: return
         val paint = Paint(Paint.FILTER_BITMAP_FLAG)
         runCatching {
-            val bright = renderFrame(base, 0f, strength.coerceIn(0.25f, 1f), paint)
+            val bright = renderGlow(base, strength.coerceIn(0.25f, 1f), paint)
             writing.set(true)
             try {
                 setArtwork.invoke(layer, bright)
@@ -210,6 +239,33 @@ internal object BackgroundPulse {
             })
             ModernXposedRuntime.log("background pulse: setArtwork capture hook installed")
         }.onFailure { ModernXposedRuntime.log("background pulse: capture hook failed: $it") }
+    }
+
+    /**
+     * Radial glow at the centre: the host's blur turns it into a soft local
+     * pulse instead of the whole screen brightening.
+     */
+    private fun renderGlow(source: Bitmap, strength: Float, paint: Paint): Bitmap {
+        val bitmap = Bitmap.createBitmap(TEXTURE_EDGE, TEXTURE_EDGE, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawBitmap(source, null, Rect(0, 0, TEXTURE_EDGE, TEXTURE_EDGE), paint)
+        val radius = TEXTURE_EDGE * 0.42f
+        val glow = android.graphics.RadialGradient(
+            TEXTURE_EDGE / 2f,
+            TEXTURE_EDGE / 2f,
+            radius,
+            intArrayOf(
+                Color.argb((140 * strength).toInt().coerceIn(0, 255), 255, 255, 255),
+                Color.argb((60 * strength).toInt().coerceIn(0, 255), 255, 255, 255),
+                Color.TRANSPARENT,
+            ),
+            floatArrayOf(0f, 0.55f, 1f),
+            android.graphics.Shader.TileMode.CLAMP,
+        )
+        val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        glowPaint.shader = glow
+        canvas.drawCircle(TEXTURE_EDGE / 2f, TEXTURE_EDGE / 2f, radius, glowPaint)
+        return bitmap
     }
 
     /** Small wobble + optional brightness kick; the host blurs this further. */
