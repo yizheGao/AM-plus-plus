@@ -53,10 +53,12 @@ internal object GlowLayer {
     private const val CONFIG_TTL_MS = 200L
     private const val TEST_ACTION = "dev.ampp.glow.TEST"
     /** Cover-derived gradients need a floor of darkness to keep lyric text readable. */
-    private const val VALUE_FLOOR = 0.20f
+    private const val VALUE_FLOOR = 0.25f
     private const val VALUE_CEILING = 0.46f
     /** Share of the cover's dominant colour mixed into every cell, so the field stays coherent. */
-    private const val DOMINANT_MIX = 0.62f
+    private const val DOMINANT_MIX = 0.75f
+    /** Corner darkening, matched to the reference backdrop's radial falloff. */
+    private const val VIGNETTE = 0.18f
 
     private val handler = Handler(Looper.getMainLooper())
     private val installed = java.util.WeakHashMap<Application, Boolean>()
@@ -453,11 +455,13 @@ internal object GlowLayer {
             // Slow drift: each cell breathes on its own phase so the wash never looks frozen.
             val phase = (col * 0.7f + row * 1.3f) * TWO_PI_THIRD
             val drift = sin(nowMs / 9_000f + phase) * (if (breathing) 0.035f else 0.012f)
-            hsv[0] = (hsv[0] + drift * 40f + 360f) % 360f
-            hsv[1] = (hsv[1] * (0.95f + 0.05f * breath)).coerceIn(0f, 1f)
+            hsv[0] = (hsv[0] + drift * 220f + 360f) % 360f
+            hsv[1] = (hsv[1] * 1.30f * (0.95f + 0.05f * breath)).coerceIn(0f, 1f)
             val base = VALUE_FLOOR + (VALUE_CEILING - VALUE_FLOOR) * hsv[2]
             // Very small energy lift: the reference backdrop only breathes, it never flashes.
-            val lifted = base * (1f + 0.05f * breath) * (1f + 0.06f * level)
+            val radial = ((u - 0.5f) * (u - 0.5f) + (v - 0.5f) * (v - 0.5f)) / 0.5f
+            val shade = 1f - VIGNETTE * radial.coerceIn(0f, 1f)
+            val lifted = base * (1f + 0.05f * breath) * (1f + 0.06f * level) * shade
             hsv[2] = lifted.coerceIn(0f, 1f)
             return Color.HSVToColor(hsv)
         }
