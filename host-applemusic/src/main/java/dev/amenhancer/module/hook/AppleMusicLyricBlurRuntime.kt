@@ -130,6 +130,7 @@ internal class AppleMusicLyricBlurRuntime(
                     // The native line highlight is the one per-line signal that
                     // actually fires on this build (adapter lineCommit does not).
                     if (role == "nativeLine") BackgroundPulse.bump()
+                    if (role == "nativeWord") BackgroundPulse.word()
                 }
             })
         }

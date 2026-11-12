@@ -22,7 +22,7 @@ import java.lang.reflect.Method
  */
 internal object BackgroundPulse {
     private const val BACKGROUND_LAYER = "background_layers"
-    private const val TEXTURE_EDGE = 32
+    private const val TEXTURE_EDGE = 96
 
     @Volatile private var attached: View? = null
     @Volatile private var hostTexture: Bitmap? = null
@@ -38,6 +38,13 @@ internal object BackgroundPulse {
      */
     fun pulse(strength: Float) {
         GlowLayer.pulse(strength)
+    }
+
+    /** Called on every word onset: forwards a small local impulse. */
+    fun word() {
+        if (!runCatching { dev.amenhancer.module.config.TargetConfigClient.currentSettings().lyricLineFlashEnabled }
+                .getOrDefault(false)) return
+        GlowLayer.word()
     }
 
     /** Called when the highlighted lyric line changes. */

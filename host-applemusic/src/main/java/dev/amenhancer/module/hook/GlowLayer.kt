@@ -7,9 +7,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.Shader
 import android.media.AudioManager
 import android.os.Build
@@ -22,40 +24,39 @@ import android.view.ViewGroup
 import dev.amenhancer.module.ModuleConstants
 import java.lang.ref.WeakReference
 import kotlin.math.exp
-import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Self-drawn glow layer for the player page.
+ * Background wash for the player page.
  *
  * Sits between the host's own blurred artwork and the player content: inserted into
  * `player_root` directly after `background_layers`, with z kept at 0. The scan that
- * established this position is documented in `AMPP-insertion-scan.md`; the short
- * version is that the host paints siblings in Z order first and child order second,
- * and the dual-pane wrapper carries `translationZ = 1.0`, so elevation on this view
- * would push the glow above the lyrics.
+ * established this position is documented in `AMPP-insertion-scan.md`.
  *
- * The layer owns no bitmap and never touches the host's artwork pipeline: it draws a
- * few soft radial blobs tinted by the current cover, keeps a slow ambient breath, and
- * lifts them for a moment whenever a lyric line changes.
+ * The rendering follows what LyricsBlossom actually does (see
+ * `analysis/lyricsblossom/REPORT.md`): a very small control mesh whose colours come
+ * straight from the cover, bilinearly upscaled into a full-page gradient, with ordered
+ * dither to keep the ramp band-free. That app has no particles, bloom, feedback or beat
+ * detection — the whole backdrop is this one gradient, and the audio only nudges its
+ * colour and contrast. Here the same nudge comes from the lyric line/word events, so the
+ * wash still breathes without an audio path.
  */
 internal object GlowLayer {
     private const val TAG = "player glow"
     private const val PLAYER_ROOT = "player_root"
     private const val BACKGROUND_LAYER = "background_layers"
     private const val FRAME_MS = 50L
-    private const val IDLE_FRAME_MS = 160L
-    private const val AMBIENT_ALPHA = 0.05f
-    private const val PULSE_ALPHA = 0.30f
+    private const val IDLE_FRAME_MS = 120L
     private const val PULSE_ATTACK_MS = 120f
-    private const val PULSE_DECAY_MS = 420f
-    private const val DEFAULT_BREATH_SECONDS = 7f
+    private const val PULSE_DECAY_MS = 480f
     private const val CONFIG_TTL_MS = 200L
     private const val TEST_ACTION = "dev.ampp.glow.TEST"
+    /** Cover-derived gradients need a floor of darkness to keep lyric text readable. */
+    private const val VALUE_FLOOR = 0.30f
+    private const val VALUE_CEILING = 0.62f
 
     private val handler = Handler(Looper.getMainLooper())
     private val installed = java.util.WeakHashMap<Application, Boolean>()
-    private val tintPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     @Volatile private var attached: GlowView? = null
     @Volatile private var rootRef: WeakReference<ViewGroup> = WeakReference(null)
@@ -71,11 +72,11 @@ internal object GlowLayer {
     private data class GlowConfig(
         val on: Boolean,
         val strength: Float,
-        val band: Float,
+        val detail: Float,
         val breathMs: Float,
     )
 
-    @Volatile private var config = GlowConfig(false, 1f, 0.18f, DEFAULT_BREATH_SECONDS * 1000f)
+    @Volatile private var config = GlowConfig(false, 1f, 0.18f, 7_000f)
     @Volatile private var configAt = 0L
 
     private val frame = object : Runnable {
@@ -93,24 +94,15 @@ internal object GlowLayer {
             val energy = energyAt(now)
             val playing = musicActive(view.context)
             val breathing = playing && config.breathMs > 0f
-            // Real period in seconds: one full breath per configured span.
-            val breath = if (breathing) {
-                0.5f + 0.5f * sin((now / config.breathMs) * TWO_PI)
-            } else {
-                0f
-            }
-            view.bandFraction = config.band
-            view.level = (if (breathing) AMBIENT_ALPHA * config.strength * breath else 0f) +
-                PULSE_ALPHA * config.strength * energy
-            view.warm = coverColor()
-            if (view.level <= 0.004f) {
-                view.alpha = 0f
-            } else {
-                view.alpha = 1f
-                view.invalidate()
-            }
-            // A pulse needs 20 fps to read as a flash; the slow breath does not, and idling
-            // at 6 fps keeps the layer cheap while the player page is open but quiet.
+            val breath = if (breathing) 0.5f + 0.5f * sin((now / config.breathMs) * TWO_PI) else 0.5f
+            view.level = energy
+            view.strength = config.strength
+            view.detail = config.detail
+            view.breath = breath
+            view.breathing = breathing
+            view.cover = BackgroundPulse.coverTexture()
+            view.alpha = 1f
+            view.invalidate()
             handler.postDelayed(this, if (energy > 0f) FRAME_MS else IDLE_FRAME_MS)
         }
     }
@@ -120,10 +112,7 @@ internal object GlowLayer {
         application.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
                 if (activity.packageName != ModuleConstants.TARGET_PACKAGE) return
-                val window = activity.window ?: return
-                val decor = window.decorView ?: return
-                // The player page can be inflated later than resume; one layout pass is
-                // enough for player_root to exist, and the router re-attaches on the next.
+                val decor = activity.window?.decorView ?: return
                 decor.viewTreeObserver.addOnGlobalLayoutListener { attach(decor) }
             }
 
@@ -141,14 +130,17 @@ internal object GlowLayer {
         registerTestReceiver(application)
     }
 
-    /** Line change: a soft lift, independent of the caller's notion of strength scale. */
+    /** Line change: the wash lifts and warms a little, then settles. */
     fun bump() = pulse(0.72f)
+
+    /** Word onset: the same impulse at a third of the strength, so it reads as shimmer. */
+    fun word() = pulse(0.22f)
 
     fun pulse(strength: Float) {
         if (strength <= 0.01f) return
         val config = config()
         if (!config.on) {
-            ModernXposedRuntime.log("$TAG: pulse ignored, glow off (strength=${config.strength} band=${config.band})")
+            ModernXposedRuntime.log("$TAG: pulse ignored, glow off")
             return
         }
         val view = attached ?: return
@@ -157,7 +149,7 @@ internal object GlowLayer {
         pulsePeak = strength.coerceIn(0f, 1f)
         if (pulseLogs < 8) {
             pulseLogs += 1
-            ModernXposedRuntime.log("$TAG: pulse #$pulseLogs strength=$strength playing=${musicActive(view.context)}")
+            ModernXposedRuntime.log("$TAG: pulse #$pulseLogs strength=$strength")
         }
         if (!looping) {
             looping = true
@@ -165,25 +157,28 @@ internal object GlowLayer {
         }
     }
 
-    private fun status(): String {
-        val view = attached
-        val root = rootRef.get()
-        val background = root?.let { r -> r.findViewById<View>(idOf(r, BACKGROUND_LAYER)) }
-        return "attached=${view != null}" +
-            " background=${background?.width}x${background?.height}" +
-
-            " window=${view?.isAttachedToWindow}" +
-            " shown=${view?.isShown}" +
-            " size=${view?.width}x${view?.height}" +
-            " cfg=${config()}" +
-            " looping=$looping" +
-            " pulseAt=$pulseAt holdUntil=$holdUntil"
+    private fun energyAt(now: Long): Float {
+        val at = pulseAt
+        val held = if (now < holdUntil) holdLevel else 0f
+        if (at == 0L) return held
+        val elapsed = (now - at).toFloat()
+        if (elapsed < 0f) return held
+        val decayed = if (elapsed < PULSE_ATTACK_MS) {
+            pulsePeak * (elapsed / PULSE_ATTACK_MS)
+        } else {
+            pulsePeak * exp(-(elapsed - PULSE_ATTACK_MS) / decayMs)
+        }
+        val value = maxOf(if (decayed < 0.004f) 0f else decayed, held)
+        return value
     }
 
+    private fun musicActive(context: Context): Boolean = runCatching {
+        (context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager)?.isMusicActive == true
+    }.getOrDefault(false)
+
     /**
-     * Snapshot of the three glow settings, refreshed at most every [CONFIG_TTL_MS]; the frame
-     * loop reads it several times a second and a full settings decode per frame is wasteful.
-     * Any of the three at zero switches the layer off, as does the master toggle.
+     * Snapshot of the glow settings, refreshed at most every [CONFIG_TTL_MS]. Any of the
+     * three at zero switches the layer off, as does the master toggle.
      */
     private fun config(): GlowConfig {
         val now = SystemClock.uptimeMillis()
@@ -194,77 +189,16 @@ internal object GlowLayer {
             dev.amenhancer.module.config.TargetConfigClient.currentSettings()
         }.getOrNull()
         val strength = (settings?.lyricGlowStrengthPercent ?: 0).coerceAtLeast(0) / 100f
-        val band = (settings?.lyricGlowBandPercent ?: 0).coerceAtLeast(0) / 100f
+        val detail = (settings?.lyricGlowBandPercent ?: 0).coerceAtLeast(0) / 100f
         val breathSeconds = settings?.lyricGlowBreathSeconds ?: 0
         val fresh = GlowConfig(
-            on = settings != null && settings.lyricLineFlashEnabled && strength > 0f && band > 0f,
+            on = settings != null && settings.lyricLineFlashEnabled && strength > 0f && detail > 0f,
             strength = strength,
-            band = band,
+            detail = detail,
             breathMs = if (breathSeconds > 0) breathSeconds * 1000f else 0f,
         )
         config = fresh
         return fresh
-    }
-
-    private fun energyAt(now: Long): Float {
-        val at = pulseAt
-        if (at == 0L) return 0f
-        val elapsed = (now - at).toFloat()
-        if (elapsed < 0f) return 0f
-        if (elapsed < PULSE_ATTACK_MS) return pulsePeak * (elapsed / PULSE_ATTACK_MS)
-        val decayed = pulsePeak * exp(-(elapsed - PULSE_ATTACK_MS) / decayMs)
-        val held = if (now < holdUntil) holdLevel else 0f
-        val value = maxOf(if (decayed < 0.004f) 0f else decayed, held)
-        return value
-    }
-
-    private fun musicActive(context: Context): Boolean = runCatching {
-        (context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager)?.isMusicActive == true
-    }.getOrDefault(false)
-
-    /** Average of the cover's most saturated pixels, pushed towards a warm tint. */
-    private fun coverColor(): Int {
-        val bitmap = BackgroundPulse.coverTexture() ?: return DEFAULT_WARM
-        val width = bitmap.width
-        val height = bitmap.height
-        if (width <= 0 || height <= 0) return DEFAULT_WARM
-        var sumR = 0L
-        var sumG = 0L
-        var sumB = 0L
-        var weight = 0L
-        val stepX = (width / 8).coerceAtLeast(1)
-        val stepY = (height / 8).coerceAtLeast(1)
-        val hsv = FloatArray(3)
-        var y = 0
-        while (y < height) {
-            var x = 0
-            while (x < width) {
-                val pixel = bitmap.getPixel(x, y)
-                Color.colorToHSV(pixel, hsv)
-                // Dark and grey cover areas say little about the palette; skip them.
-                val w = (hsv[1] * 255f).toInt() + (hsv[2] * 90f).toInt()
-                if (w > 40) {
-                    sumR += Color.red(pixel) * w
-                    sumG += Color.green(pixel) * w
-                    sumB += Color.blue(pixel) * w
-                    weight += w
-                }
-                x += stepX
-            }
-            y += stepY
-        }
-        if (weight == 0L) return DEFAULT_WARM
-        val average = Color.rgb(
-            (sumR / weight).toInt(),
-            (sumG / weight).toInt(),
-            (sumB / weight).toInt(),
-        )
-        Color.colorToHSV(average, hsv)
-        // Keep the hue, but lift value and tame saturation: a washed-out glow reads as light
-        // rather than as a coloured stain on top of the host's own blurred backdrop.
-        hsv[1] = (hsv[1] * 0.55f).coerceIn(0.10f, 0.55f)
-        hsv[2] = 1f
-        return Color.HSVToColor(hsv)
     }
 
     private fun attach(decor: View) {
@@ -294,7 +228,7 @@ internal object GlowLayer {
         view.layoutParams = params
         root.addView(view, index, params)
         // Z must stay 0: the dual-pane wrapper above carries translationZ = 1.0, and any
-        // elevation here would lift the glow over the lyric text.
+        // elevation here would lift the wash over the lyric text.
         view.elevation = 0f
         view.translationZ = 0f
         view.alpha = 0f
@@ -353,10 +287,6 @@ internal object GlowLayer {
         handler.removeCallbacks(frame)
     }
 
-    private fun idOf(view: View, name: String): Int = runCatching {
-        view.resources.getIdentifier(name, "id", ModuleConstants.TARGET_PACKAGE)
-    }.getOrDefault(0)
-
     private fun describeChildren(root: ViewGroup): String = buildString {
         for (i in 0 until root.childCount) {
             if (i > 0) append(", ")
@@ -364,11 +294,21 @@ internal object GlowLayer {
         }
     }
 
+    private fun idOf(view: View, name: String): Int = runCatching {
+        view.resources.getIdentifier(name, "id", ModuleConstants.TARGET_PACKAGE)
+    }.getOrDefault(0)
+
     private fun idName(view: View): String = runCatching {
         view.resources.getResourceEntryName(view.id)
     }.getOrDefault(view.id.toString())
 
-    /** Test hook: `adb shell am broadcast -a dev.ampp.glow.TEST --ef strength 1.0`. */
+    private fun status(): String {
+        val view = attached
+        return "attached=${view != null} window=${view?.isAttachedToWindow} shown=${view?.isShown}" +
+            " cfg=${config()} looping=$looping"
+    }
+
+    /** Test hook: `adb shell am broadcast -a dev.ampp.glow.TEST --ef strength 1.0 --ei holdMs 8000`. */
     private fun registerTestReceiver(application: Application) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
@@ -382,10 +322,7 @@ internal object GlowLayer {
                 } else {
                     holdUntil = 0L
                 }
-                ModernXposedRuntime.log(
-                    "$TAG: test pulse strength=$strength holdMs=$holdMs decayMs=$decayMs" +
-                        " ${status()}",
-                )
+                ModernXposedRuntime.log("$TAG: test pulse strength=$strength holdMs=$holdMs ${status()}")
                 pulse(strength)
             }
         }
@@ -399,32 +336,33 @@ internal object GlowLayer {
         }.onFailure { ModernXposedRuntime.log("$TAG: test receiver unavailable: $it") }
     }
 
-    private const val DEFAULT_WARM = 0xFFFFE7C8.toInt()
+    private const val TWO_PI = (2.0 * Math.PI).toFloat()
 
     /**
-     * Plain View: no background, no touch handling. A sibling that does not consume the
-     * event lets the host try the next child, so taps still reach the player controls.
-     *
-     * The glow is a ring hugging the viewport: brightest at the screen border, fading
-     * radially inwards to nothing. The mask is generated once per size and palette as a
-     * smoothstep distance field and then stretched with bilinear filtering, which keeps the
-     * falloff free of banding without any per-frame shader work.
+     * The mesh: a handful of colour cells sampled from the cover, upscaled by the
+     * bilinear filter into a full-page gradient — the same trick as the reference app's
+     * `BackdropMeshLayer`, at a fraction of the cost of a shader.
      */
     private class GlowView(context: Context) : View(context) {
+        /** Global lyric energy, 0..1. */
         var level: Float = 0f
-        var warm: Int = 0xFFFFE7C8.toInt()
-        var bandFraction: Float = 0.18f
-            set(value) {
-                if (value == field) return
-                field = value
-                ring = null
-                invalidate()
-            }
+        /** 0..2: how much of the wash covers the host background. */
+        var strength: Float = 1f
+        /** 0..0.4: cell density. */
+        var detail: Float = 0.18f
+        var breath: Float = 0.5f
+        var breathing: Boolean = false
+        var cover: Bitmap? = null
+
         private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
-        private var ring: Bitmap? = null
-        private var builtWidth = -1
-        private var builtHeight = -1
-        private var builtTint = -1
+        private val ditherPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
+            blendMode = android.graphics.BlendMode.PLUS
+        }
+        private var mesh: Bitmap? = null
+        private var cols = 0
+        private var rows = 0
+        private var dither: Bitmap? = null
+        private var startedAt = 0L
 
         init {
             isClickable = false
@@ -434,96 +372,116 @@ internal object GlowLayer {
         }
 
         override fun onDraw(canvas: Canvas) {
-            if (level <= 0.004f) return
             val w = width
             val h = height
             if (w <= 0 || h <= 0) return
-            ensureRing(w, h)
-            val alpha = (level * 255f).toInt().coerceIn(0, 255)
-            if (alpha <= 0) return
-            paint.alpha = alpha
-            canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
-        }
-
-        private fun ensureRing(w: Int, h: Int) {
-            val bucket = tintBucket(warm)
-            if (ring != null && builtWidth == w && builtHeight == h && builtTint == bucket) return
-            val mask = buildRing(w, h, warm) ?: return
-            ring = mask
-            paint.shader = android.graphics.BitmapShader(mask, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
-                .apply {
-                    setLocalMatrix(android.graphics.Matrix().apply {
-                        setScale(w / mask.width.toFloat(), h / mask.height.toFloat())
-                    })
+            if (startedAt == 0L) startedAt = SystemClock.uptimeMillis()
+            val now = SystemClock.uptimeMillis() - startedAt
+            ensureMesh(w, h)
+            val bitmap = mesh ?: return
+            val pixels = IntArray(cols * rows)
+            for (row in 0 until rows) {
+                for (col in 0 until cols) {
+                    pixels[row * cols + col] = cellColor(col, row, now)
                 }
-            builtWidth = w
-            builtHeight = h
-            builtTint = bucket
+            }
+            runCatching { bitmap.setPixels(pixels, 0, cols, 0, 0, cols, rows) }
+            paint.alpha = (strength.coerceIn(0f, 1f) * 255f).toInt().coerceIn(0, 255)
+            canvas.drawBitmap(bitmap, null, Rect(0, 0, w, h), paint)
+            ensureDither()
+            if (ditherPaint.shader != null) {
+                canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), ditherPaint)
+            }
         }
 
         /**
-         * Distance-to-border field in a downscaled buffer: alpha 1 on the border, easing to 0
-         * at [bandFraction] of the shorter edge. `scale` is the view-pixel size of one mask
-         * pixel; bilinear upscaling turns the 8-bit ramp into a continuous gradient.
+         * Colours come straight from the cover, the way the reference app feeds its
+         * `GradientCS` pass: sample the artwork at the cell centre, then push value into a
+         * band that keeps lyric text legible on top.
          */
-        private fun buildRing(w: Int, h: Int, tint: Int): Bitmap? {
-            val maskWidth = minOf(MASK_MAX_WIDTH, w).coerceAtLeast(2)
-            val scale = w.toFloat() / maskWidth
-            val maskHeight = (h / scale).toInt().coerceAtLeast(2)
-            val band = (bandFraction * minOf(w, h)).coerceAtLeast(1f)
-            val core = blend(tint, 0.55f)
-            val pixels = IntArray(maskWidth * maskHeight)
-            for (y in 0 until maskHeight) {
-                val fy = (y + 0.5f) * scale
-                val dy = minOf(fy, h - fy)
-                for (x in 0 until maskWidth) {
-                    val fx = (x + 0.5f) * scale
-                    val distance = minOf(dx(dy, fx, w), band) / band
-                    if (distance >= 1f) continue
-                    // smoothstep: zero slope at both ends, so neither the border nor the
-                    // inner edge shows a seam.
-                    val t = distance * distance * (3f - 2f * distance)
-                    val alpha = ((1f - t) * 255f).toInt().coerceIn(0, 255)
-                    if (alpha <= 0) continue
-                    val color = lerp(core, tint, t)
-                    pixels[y * maskWidth + x] = (alpha shl 24) or (color and 0x00FFFFFF)
+        private fun cellColor(col: Int, row: Int, nowMs: Long): Int {
+            val u = (col + 0.5f) / cols
+            val v = (row + 0.5f) / rows
+            val source = cover
+            val sampled = if (source != null && source.width > 1 && source.height > 1) {
+                // Area average, not a point sample: one red glyph in a cell must not tint the
+                // whole cell, which is what made the first pass look blotchy.
+                sampleArea(source, u, v)
+            } else {
+                FALLBACK
+            }
+            val hsv = FloatArray(3)
+            Color.colorToHSV(sampled, hsv)
+            // Slow drift: each cell breathes on its own phase so the wash never looks frozen.
+            val phase = (col * 0.7f + row * 1.3f) * TWO_PI_THIRD
+            val drift = sin(nowMs / 9_000f + phase) * (if (breathing) 0.035f else 0.012f)
+            hsv[0] = (hsv[0] + drift * 40f + 360f) % 360f
+            hsv[1] = (hsv[1] * (0.95f + 0.05f * breath)).coerceIn(0f, 1f)
+            val base = VALUE_FLOOR + (VALUE_CEILING - VALUE_FLOOR) * hsv[2]
+            val lifted = base * (1f + 0.10f * breath) * (1f + 0.22f * level)
+            hsv[2] = lifted.coerceIn(0f, 1f)
+            return Color.HSVToColor(hsv)
+        }
+
+        private fun sampleArea(source: Bitmap, u: Float, v: Float): Int {
+            val left = ((u - 0.5f / cols) * source.width).toInt().coerceIn(0, source.width - 1)
+            val right = ((u + 0.5f / cols) * source.width).toInt().coerceIn(left, source.width - 1)
+            val top = ((v - 0.5f / rows) * source.height).toInt().coerceIn(0, source.height - 1)
+            val bottom = ((v + 0.5f / rows) * source.height).toInt().coerceIn(top, source.height - 1)
+            var r = 0L
+            var g = 0L
+            var b = 0L
+            var n = 0
+            for (y in top..bottom) {
+                for (x in left..right) {
+                    val pixel = source.getPixel(x, y)
+                    r += Color.red(pixel)
+                    g += Color.green(pixel)
+                    b += Color.blue(pixel)
+                    n += 1
                 }
             }
-            return runCatching {
-                Bitmap.createBitmap(maskWidth, maskHeight, Bitmap.Config.ARGB_8888).apply {
-                    setPixels(pixels, 0, maskWidth, 0, 0, maskWidth, maskHeight)
-                }
+            if (n == 0) return FALLBACK
+            return Color.rgb((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
+        }
+
+        private fun ensureMesh(w: Int, h: Int) {
+            // Cell sizes follow the reference app's grid rule: roughly screen/645 by
+            // screen/1365, clamped to a small maximum. `detail` widens the grid.
+            val density = detail.coerceIn(0.02f, 0.40f)
+            val targetCols = (4 + (density / 0.40f) * 16f).toInt()
+            val targetRows = (3 + (density / 0.40f) * 12f).toInt()
+            if (mesh != null && cols == targetCols && rows == targetRows) return
+            cols = targetCols.coerceIn(2, 24)
+            rows = targetRows.coerceIn(2, 24)
+            mesh = runCatching {
+                Bitmap.createBitmap(cols, rows, Bitmap.Config.ARGB_8888)
             }.getOrNull()
         }
 
-        private fun dx(dy: Float, fx: Float, w: Int): Float = minOf(dy, fx, w - fx)
-
-        private fun lerp(from: Int, to: Int, t: Float): Int {
-            val keep = 1f - t
-            return Color.rgb(
-                (Color.red(from) * keep + Color.red(to) * t).toInt().coerceIn(0, 255),
-                (Color.green(from) * keep + Color.green(to) * t).toInt().coerceIn(0, 255),
-                (Color.blue(from) * keep + Color.blue(to) * t).toInt().coerceIn(0, 255),
-            )
+        private fun ensureDither() {
+            if (dither != null) return
+            val size = 64
+            val tile = runCatching { Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888) }
+                .getOrNull() ?: return
+            val pixels = IntArray(size * size)
+            val bayer = intArrayOf(0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5)
+            for (y in 0 until size) {
+                for (x in 0 until size) {
+                    // A few luminance steps of ordered noise: enough to break the 8-bit
+                    // stair-steps on a large soft ramp, invisible as texture.
+                    val value = bayer[(y % 4) * 4 + (x % 4)] * 4 / 15
+                    pixels[y * size + x] = Color.argb(255, value, value, value)
+                }
+            }
+            runCatching { tile.setPixels(pixels, 0, size, 0, 0, size, size) }
+            ditherPaint.shader = BitmapShader(tile, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+            dither = tile
         }
 
-        /** Mixes the cover tint towards warm white. */
-        private fun blend(tint: Int, whiteShare: Float): Int {
-            val keep = 1f - whiteShare
-            return Color.rgb(
-                (Color.red(tint) * keep + 255f * whiteShare).toInt().coerceIn(0, 255),
-                (Color.green(tint) * keep + 245f * whiteShare).toInt().coerceIn(0, 255),
-                (Color.blue(tint) * keep + 232f * whiteShare).toInt().coerceIn(0, 255),
-            )
+        private companion object {
+            const val FALLBACK = 0xFF2A2A33.toInt()
+            val TWO_PI_THIRD = (2.0 * Math.PI / 3.0).toFloat()
         }
-
-        private fun tintBucket(color: Int): Int =
-            (Color.red(color) shr 2 shl 16) or (Color.green(color) shr 2 shl 8) or (Color.blue(color) shr 2)
     }
-
-    private const val TWO_PI = (2.0 * Math.PI).toFloat()
-
-    /** Mask edge length in pixels; small enough to build instantly, large enough to stay smooth. */
-    private const val MASK_MAX_WIDTH = 480
-
 }
