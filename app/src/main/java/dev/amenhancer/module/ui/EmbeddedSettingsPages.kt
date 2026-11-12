@@ -468,6 +468,12 @@ private fun EmbeddedSettingsHost.EmbeddedSettingsCategory(
                     settings.cjkKaraokeAnimationEnabled, EmbeddedSvgIcon.Karaoke) { value -> onEdit { it.copy(cjkKaraokeAnimationEnabled = value) } }
                 Setting(ModuleText.LYRIC_EFFECTS_OPTIMIZATION, ModuleText.LYRIC_EFFECTS_OPTIMIZATION_SUMMARY,
                     settings.lyricEffectsOptimizationEnabled, EmbeddedSvgIcon.LyricEffects) { value -> onEdit { it.copy(lyricEffectsOptimizationEnabled = value) } }
+                Setting(ModuleText.LYRIC_EDGE_FEATHER, ModuleText.LYRIC_EDGE_FEATHER_SUMMARY,
+                    settings.lyricEdgeFeatherEnabled, EmbeddedSvgIcon.LyricsBlur) { value -> onEdit { it.copy(lyricEdgeFeatherEnabled = value) } }
+                Setting(ModuleText.TABLET_HIDE_PLAYED_LYRICS, ModuleText.TABLET_HIDE_PLAYED_LYRICS_SUMMARY,
+                    settings.dualPaneHidePlayedLyricsEnabled, EmbeddedSvgIcon.LyricsBlur) { value -> onEdit { it.copy(dualPaneHidePlayedLyricsEnabled = value) } }
+                Setting(ModuleText.LYRICS_FONT_BOLD, ModuleText.LYRICS_FONT_BOLD_SUMMARY,
+                    settings.lyricsFontBoldEnabled, EmbeddedSvgIcon.Document) { value -> onEdit { it.copy(lyricsFontBoldEnabled = value) } }
                 Setting(ModuleText.LYRIC_LINE_FLASH, ModuleText.LYRIC_LINE_FLASH_SUMMARY,
                     settings.lyricLineFlashEnabled, EmbeddedSvgIcon.LyricEffects) { value ->
                     onEdit { it.copy(lyricLineFlashEnabled = value) }
@@ -496,12 +502,6 @@ private fun EmbeddedSettingsHost.EmbeddedSettingsCategory(
                     summary = localizedText(ModuleText.LYRIC_GLOW_BREATH_SUMMARY),
                     defaultValue = 7,
                 ) { value -> onEdit { it.copy(lyricGlowBreathSeconds = value) } }
-                Setting(ModuleText.LYRIC_EDGE_FEATHER, ModuleText.LYRIC_EDGE_FEATHER_SUMMARY,
-                    settings.lyricEdgeFeatherEnabled, EmbeddedSvgIcon.LyricsBlur) { value -> onEdit { it.copy(lyricEdgeFeatherEnabled = value) } }
-                Setting(ModuleText.TABLET_HIDE_PLAYED_LYRICS, ModuleText.TABLET_HIDE_PLAYED_LYRICS_SUMMARY,
-                    settings.dualPaneHidePlayedLyricsEnabled, EmbeddedSvgIcon.LyricsBlur) { value -> onEdit { it.copy(dualPaneHidePlayedLyricsEnabled = value) } }
-                Setting(ModuleText.LYRICS_FONT_BOLD, ModuleText.LYRICS_FONT_BOLD_SUMMARY,
-                    settings.lyricsFontBoldEnabled, EmbeddedSvgIcon.Document) { value -> onEdit { it.copy(lyricsFontBoldEnabled = value) } }
                 EmbeddedSettingRange(
                     title = localizedText(ModuleText.LYRIC_BLUR_OFFSET),
                     value = settings.lyricBlurRadiusOffsetPx,
