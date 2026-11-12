@@ -49,6 +49,8 @@ internal class LyricBlurViewSession(
     private var autoReturn: Runnable? = null
     private var returning = false
     private var returnSteps = 0
+    private var musicActiveAt = 0L
+    private var musicActiveNow = false
     private var bindingSequence = 0L
     private val bindingGenerations = WeakHashMap<View, Long>()
     private val observedRows = WeakHashMap<View, Boolean>()
@@ -297,6 +299,7 @@ internal class LyricBlurViewSession(
     private fun evaluateAutoReturn(rv: ViewGroup) {
         if (closed) return
         if (!autoReturnEnabled()) { cancelAutoReturn(); returning = false; return }
+        if (!musicActive(rv)) { cancelAutoReturn(); returning = false; return }
         val anchor = anchorOrdinals()
         if (anchor == null) { cancelAutoReturn(); returning = false; return }
         if (rows.any { it.identity.lyricOrdinal in anchor }) {
@@ -346,6 +349,18 @@ internal class LyricBlurViewSession(
         is LyricFocusAnchor.Lines -> anchor.ordinals.ifEmpty { null }
         is LyricFocusAnchor.Instrumental -> setOf(anchor.beforeOrdinal - 1).filter { it >= 0 }.toSet().ifEmpty { null }
         else -> null
+    }
+
+    /** Only snap back while something is actually playing; a paused page should stay readable. */
+    private fun musicActive(view: View): Boolean {
+        val now = SystemClock.uptimeMillis()
+        if (now - musicActiveAt < 500L) return musicActiveNow
+        musicActiveAt = now
+        musicActiveNow = runCatching {
+            (view.context.getSystemService(android.content.Context.AUDIO_SERVICE)
+                as? android.media.AudioManager)?.isMusicActive == true
+        }.getOrDefault(false)
+        return musicActiveNow
     }
 
     private fun autoReturnEnabled(): Boolean = runCatching {
