@@ -24,6 +24,7 @@ import android.view.ViewGroup
 import dev.amenhancer.module.ModuleConstants
 import java.lang.ref.WeakReference
 import kotlin.math.exp
+import kotlin.math.cos
 import kotlin.math.sin
 
 /**
@@ -52,8 +53,10 @@ internal object GlowLayer {
     private const val CONFIG_TTL_MS = 200L
     private const val TEST_ACTION = "dev.ampp.glow.TEST"
     /** Cover-derived gradients need a floor of darkness to keep lyric text readable. */
-    private const val VALUE_FLOOR = 0.30f
-    private const val VALUE_CEILING = 0.62f
+    private const val VALUE_FLOOR = 0.20f
+    private const val VALUE_CEILING = 0.46f
+    /** Share of the cover's dominant colour mixed into every cell, so the field stays coherent. */
+    private const val DOMINANT_MIX = 0.62f
 
     private val handler = Handler(Looper.getMainLooper())
     private val installed = java.util.WeakHashMap<Application, Boolean>()
@@ -74,9 +77,10 @@ internal object GlowLayer {
         val strength: Float,
         val detail: Float,
         val breathMs: Float,
+        val aurora: Boolean,
     )
 
-    @Volatile private var config = GlowConfig(false, 1f, 0.18f, 7_000f)
+    @Volatile private var config = GlowConfig(false, 1f, 0.18f, 7_000f, false)
     @Volatile private var configAt = 0L
 
     private val frame = object : Runnable {
@@ -85,7 +89,9 @@ internal object GlowLayer {
             val root = rootRef.get()
             if (root == null || !view.isAttachedToWindow || !view.isShown) return stopLooping()
             val config = config()
-            if (!config.on) {
+            if (!config.on || !expanded(root)) {
+                // The collapsed sheet is only the mini player bar; painting the wash there
+                // leaves a full-width colour band over the page behind it.
                 view.alpha = 0f
                 pulsePeak = 0f
                 return stopLooping()
@@ -101,6 +107,7 @@ internal object GlowLayer {
             view.breath = breath
             view.breathing = breathing
             view.cover = BackgroundPulse.coverTexture()
+            view.aurora = config.aurora
             view.alpha = 1f
             view.invalidate()
             handler.postDelayed(this, if (energy > 0f) FRAME_MS else IDLE_FRAME_MS)
@@ -172,6 +179,13 @@ internal object GlowLayer {
         return value
     }
 
+    /** True while the player sheet covers the page rather than sitting in the mini bar. */
+    private fun expanded(root: ViewGroup): Boolean {
+        val metrics = root.resources.displayMetrics
+        val page = maxOf(metrics.widthPixels, metrics.heightPixels)
+        return root.height >= page * 0.5f
+    }
+
     private fun musicActive(context: Context): Boolean = runCatching {
         (context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager)?.isMusicActive == true
     }.getOrDefault(false)
@@ -196,6 +210,7 @@ internal object GlowLayer {
             strength = strength,
             detail = detail,
             breathMs = if (breathSeconds > 0) breathSeconds * 1000f else 0f,
+            aurora = settings?.lyricGlowAuroraEnabled == true,
         )
         config = fresh
         return fresh
@@ -234,7 +249,7 @@ internal object GlowLayer {
         view.alpha = 0f
         rootRef = WeakReference(root)
         watch(root)
-        if (!looping && config().on) {
+        if (!looping && config().on && expanded(root)) {
             looping = true
             handler.post(frame)
         }
@@ -322,6 +337,16 @@ internal object GlowLayer {
                 } else {
                     holdUntil = 0L
                 }
+                
+                
+                
+                val scrimAlpha = intent.getFloatExtra("scrimAlpha", -1f)
+                if (scrimAlpha >= 0f) {
+                    val decor = attached?.rootView as? ViewGroup
+                    val scrim = decor?.findViewById<View>(idOf(decor, "top_and_bottom_gradients"))
+                    ModernXposedRuntime.log("$TAG: scrim=${scrim?.javaClass?.simpleName} a=${scrim?.alpha}")
+                    scrim?.alpha = scrimAlpha.coerceIn(0f, 1f)
+                }
                 ModernXposedRuntime.log("$TAG: test pulse strength=$strength holdMs=$holdMs ${status()}")
                 pulse(strength)
             }
@@ -353,8 +378,16 @@ internal object GlowLayer {
         var breath: Float = 0.5f
         var breathing: Boolean = false
         var cover: Bitmap? = null
+        var aurora: Boolean = false
+        private var curtain: Bitmap? = null
 
         private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+        private val blobPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            blendMode = android.graphics.BlendMode.PLUS
+        }
+        private val curtainPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
+            blendMode = android.graphics.BlendMode.PLUS
+        }
         private val ditherPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
             blendMode = android.graphics.BlendMode.PLUS
         }
@@ -363,6 +396,8 @@ internal object GlowLayer {
         private var rows = 0
         private var dither: Bitmap? = null
         private var startedAt = 0L
+        private var dominant: Int = FALLBACK
+        private var dominantKey: Int = 0
 
         init {
             isClickable = false
@@ -388,6 +423,7 @@ internal object GlowLayer {
             runCatching { bitmap.setPixels(pixels, 0, cols, 0, 0, cols, rows) }
             paint.alpha = (strength.coerceIn(0f, 1f) * 255f).toInt().coerceIn(0, 255)
             canvas.drawBitmap(bitmap, null, Rect(0, 0, w, h), paint)
+            if (aurora) drawAurora(canvas, w, h, now)
             ensureDither()
             if (ditherPaint.shader != null) {
                 canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), ditherPaint)
@@ -410,18 +446,135 @@ internal object GlowLayer {
             } else {
                 FALLBACK
             }
+            val dominant = dominantColor()
+            val mixed = mix(sampled, dominant, DOMINANT_MIX)
             val hsv = FloatArray(3)
-            Color.colorToHSV(sampled, hsv)
+            Color.colorToHSV(mixed, hsv)
             // Slow drift: each cell breathes on its own phase so the wash never looks frozen.
             val phase = (col * 0.7f + row * 1.3f) * TWO_PI_THIRD
             val drift = sin(nowMs / 9_000f + phase) * (if (breathing) 0.035f else 0.012f)
             hsv[0] = (hsv[0] + drift * 40f + 360f) % 360f
             hsv[1] = (hsv[1] * (0.95f + 0.05f * breath)).coerceIn(0f, 1f)
             val base = VALUE_FLOOR + (VALUE_CEILING - VALUE_FLOOR) * hsv[2]
-            val lifted = base * (1f + 0.10f * breath) * (1f + 0.22f * level)
+            // Very small energy lift: the reference backdrop only breathes, it never flashes.
+            val lifted = base * (1f + 0.05f * breath) * (1f + 0.06f * level)
             hsv[2] = lifted.coerceIn(0f, 1f)
             return Color.HSVToColor(hsv)
         }
+
+        /**
+         * The artwork's overall colour, weighted towards its saturated pixels. Mixing every
+         * cell towards it is what turns a literal per-cell sample (blotchy) into the single
+         * coherent wash the reference backdrop shows.
+         */
+        private fun dominantColor(): Int {
+            val source = cover ?: return FALLBACK
+            val key = System.identityHashCode(source) xor (source.width shl 16) xor source.height
+            if (key == dominantKey && dominant != FALLBACK) return dominant
+            var r = 0L
+            var g = 0L
+            var b = 0L
+            var weight = 0L
+            val hsv = FloatArray(3)
+            val stepX = (source.width / 24).coerceAtLeast(1)
+            val stepY = (source.height / 24).coerceAtLeast(1)
+            var y = 0
+            while (y < source.height) {
+                var x = 0
+                while (x < source.width) {
+                    val pixel = source.getPixel(x, y)
+                    Color.colorToHSV(pixel, hsv)
+                    val w = (40 + (hsv[1] * 200f).toInt()).toLong()
+                    r += Color.red(pixel) * w
+                    g += Color.green(pixel) * w
+                    b += Color.blue(pixel) * w
+                    weight += w
+                    x += stepX
+                }
+                y += stepY
+            }
+            dominant = if (weight == 0L) FALLBACK else Color.rgb(
+                (r / weight).toInt().coerceIn(0, 255),
+                (g / weight).toInt().coerceIn(0, 255),
+                (b / weight).toInt().coerceIn(0, 255),
+            )
+            dominantKey = key
+            return dominant
+        }
+
+        private fun mix(from: Int, to: Int, amount: Float): Int {
+            val keep = 1f - amount
+            return Color.rgb(
+                (Color.red(from) * keep + Color.red(to) * amount).toInt().coerceIn(0, 255),
+                (Color.green(from) * keep + Color.green(to) * amount).toInt().coerceIn(0, 255),
+                (Color.blue(from) * keep + Color.blue(to) * amount).toInt().coerceIn(0, 255),
+            )
+        }
+
+        /**
+         * Scheme B: vertical aurora curtains. Each ribbon rises from the bottom edge, sways on
+         * an incommensurate pair of sine waves and fades towards its top, so the motion never
+         * loops visibly and never paints a hard edge.
+         */
+        private fun drawAurora(canvas: Canvas, w: Int, h: Int, nowMs: Long) {
+            val t = nowMs / 1000f
+            val tint = auroraTint()
+            val mask = curtainMask() ?: return
+            val dst = Rect()
+            for (index in 0 until AURORA_CURTAINS) {
+                val phase = index * 1.9f
+                val centre = w * (0.5f + 0.40f * sin(t * 0.031f + phase))
+                val sway = w * 0.05f * sin(t * 0.047f + phase * 1.3f)
+                val halfWidth = w * (0.13f + 0.035f * sin(t * 0.023f + phase))
+                val top = h * (0.02f + 0.10f * (0.5f + 0.5f * sin(t * 0.019f + phase * 0.7f)))
+                val alpha = (0.16f + 0.09f * (0.5f + 0.5f * sin(t * 0.041f + phase * 2.3f)) + 0.10f * level)
+                    .coerceIn(0f, 0.38f)
+                dst.set(
+                    (centre - halfWidth + sway).toInt(),
+                    top.toInt(),
+                    (centre + halfWidth + sway).toInt(),
+                    h,
+                )
+                curtainPaint.colorFilter = android.graphics.PorterDuffColorFilter(
+                    withAlpha(tint, alpha), android.graphics.PorterDuff.Mode.SRC_IN,
+                )
+                canvas.drawBitmap(mask, null, dst, curtainPaint)
+            }
+        }
+
+        /**
+         * Bell curve across, soft fade up: the ribbon has no hard edges to catch the eye.
+         * Built once; the per-frame cost is one bitmap blit per curtain.
+         */
+        private fun curtainMask(): Bitmap? {
+            curtain?.let { return it }
+            val mw = 96
+            val mh = 160
+            val bitmap = runCatching { Bitmap.createBitmap(mw, mh, Bitmap.Config.ARGB_8888) }.getOrNull() ?: return null
+            val pixels = IntArray(mw * mh)
+            for (y in 0 until mh) {
+                val v = y.toFloat() / (mh - 1)
+                val vertical = (v * v * (3f - 2f * v)) * 0.9f + 0.1f
+                for (x in 0 until mw) {
+                    val u = x.toFloat() / (mw - 1)
+                    val horizontal = sin(Math.PI * u).toFloat()
+                    val bell = horizontal * horizontal
+                    val a = (bell * vertical * 255f).toInt().coerceIn(0, 255)
+                    pixels[y * mw + x] = Color.argb(a, 255, 255, 255)
+                }
+            }
+            runCatching { bitmap.setPixels(pixels, 0, mw, 0, 0, mw, mh) }
+            curtain = bitmap
+            return bitmap
+        }
+
+        private fun auroraTint(): Int {
+            val source = cover ?: return 0xFF8FB6E8.toInt()
+            return sampleArea(source, 0.35f, 0.4f)
+        }
+
+        private fun withAlpha(color: Int, alpha: Float): Int =
+            Color.argb((alpha * 255f).toInt().coerceIn(0, 255), Color.red(color), Color.green(color), Color.blue(color))
 
         private fun sampleArea(source: Bitmap, u: Float, v: Float): Int {
             val left = ((u - 0.5f / cols) * source.width).toInt().coerceIn(0, source.width - 1)
@@ -480,6 +633,7 @@ internal object GlowLayer {
         }
 
         private companion object {
+            const val AURORA_CURTAINS = 4
             const val FALLBACK = 0xFF2A2A33.toInt()
             val TWO_PI_THIRD = (2.0 * Math.PI / 3.0).toFloat()
         }

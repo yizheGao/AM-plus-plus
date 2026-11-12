@@ -89,6 +89,7 @@ object ModuleSettingsSchema {
                 ModuleSettings.MAX_LYRIC_GLOW_BREATH_SECONDS,
             ) ?: 7,
         lyricAutoReturnEnabled = values.boolean(KEY_LYRIC_AUTO_RETURN, default = true),
+        lyricGlowAuroraEnabled = values.boolean(KEY_LYRIC_GLOW_AURORA, default = false),
         lyricEdgeFeatherEnabled = values.boolean(KEY_LYRIC_EDGE_FEATHER, default = true),
         cjkKaraokeAnimationEnabled = values.boolean(
             KEY_CJK_KARAOKE_ANIMATION_ENABLED,
@@ -195,6 +196,7 @@ object ModuleSettingsSchema {
                 ModuleSettings.MAX_LYRIC_GLOW_BREATH_SECONDS,
             ),
             KEY_LYRIC_AUTO_RETURN to settings.lyricAutoReturnEnabled,
+            KEY_LYRIC_GLOW_AURORA to settings.lyricGlowAuroraEnabled,
             KEY_LYRIC_EDGE_FEATHER to settings.lyricEdgeFeatherEnabled,
             KEY_CJK_KARAOKE_ANIMATION_ENABLED to settings.cjkKaraokeAnimationEnabled,
             KEY_LYRIC_EFFECTS_OPTIMIZATION_ENABLED to settings.lyricEffectsOptimizationEnabled,
@@ -417,6 +419,7 @@ object ModuleSettingsSchema {
         KEY_LYRIC_GLOW_BAND,
         KEY_LYRIC_GLOW_BREATH,
         KEY_LYRIC_AUTO_RETURN,
+        KEY_LYRIC_GLOW_AURORA,
         KEY_LYRIC_EDGE_FEATHER,
         KEY_CJK_KARAOKE_ANIMATION_ENABLED,
         KEY_LYRIC_EFFECTS_OPTIMIZATION_ENABLED,
@@ -480,6 +483,7 @@ object ModuleSettingsSchema {
     private const val KEY_LYRIC_GLOW_BAND = "lyric_glow_band_percent"
     private const val KEY_LYRIC_GLOW_BREATH = "lyric_glow_breath_seconds"
     private const val KEY_LYRIC_AUTO_RETURN = "lyric_auto_return_enabled"
+    private const val KEY_LYRIC_GLOW_AURORA = "lyric_glow_aurora_enabled"
     private const val KEY_LYRIC_EDGE_FEATHER = "lyric_edge_feather_enabled"
     private const val KEY_STARTUP_PAGE_PREWARM = "startup_page_prewarm_enabled"
     private const val KEY_CJK_KARAOKE_ANIMATION_ENABLED = "cjk_karaoke_animation_enabled"

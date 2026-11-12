@@ -121,6 +121,7 @@ class OrdinarySettingsWritePolicyTest {
                 "lyric_glow_band_percent" to 18,
                 "lyric_glow_breath_seconds" to 7,
                 "lyric_auto_return_enabled" to true,
+                "lyric_glow_aurora_enabled" to false,
                 "lyric_edge_feather_enabled" to true,
                 "cjk_karaoke_animation_enabled" to true,
                 "lyric_effects_optimization_enabled" to false,

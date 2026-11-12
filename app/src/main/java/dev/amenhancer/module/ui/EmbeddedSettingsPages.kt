@@ -474,6 +474,10 @@ private fun EmbeddedSettingsHost.EmbeddedSettingsCategory(
                     settings.dualPaneHidePlayedLyricsEnabled, EmbeddedSvgIcon.LyricsBlur) { value -> onEdit { it.copy(dualPaneHidePlayedLyricsEnabled = value) } }
                 Setting(ModuleText.LYRICS_FONT_BOLD, ModuleText.LYRICS_FONT_BOLD_SUMMARY,
                     settings.lyricsFontBoldEnabled, EmbeddedSvgIcon.Document) { value -> onEdit { it.copy(lyricsFontBoldEnabled = value) } }
+                Setting(ModuleText.LYRIC_GLOW_AURORA, ModuleText.LYRIC_GLOW_AURORA_SUMMARY,
+                    settings.lyricGlowAuroraEnabled, EmbeddedSvgIcon.LyricEffects) { value ->
+                    onEdit { it.copy(lyricGlowAuroraEnabled = value) }
+                }
                 Setting(ModuleText.LYRIC_AUTO_RETURN, ModuleText.LYRIC_AUTO_RETURN_SUMMARY,
                     settings.lyricAutoReturnEnabled, EmbeddedSvgIcon.LyricsBlur) { value ->
                     onEdit { it.copy(lyricAutoReturnEnabled = value) }

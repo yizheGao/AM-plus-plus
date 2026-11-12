@@ -70,6 +70,8 @@ data class ModuleSettings(
     val lyricGlowBreathSeconds: Int = 7,
     /** Scrolls the lyric list back to the playing line a few seconds after the user scrolls away. */
     val lyricAutoReturnEnabled: Boolean = true,
+    /** Scheme B: drifting aurora light over the cover-derived wash instead of the plain mesh. */
+    val lyricGlowAuroraEnabled: Boolean = false,
     val lyricEdgeFeatherEnabled: Boolean = true,
     /** Enables the native rush-gradient adaptation for CJK karaoke lyrics. */
     val cjkKaraokeAnimationEnabled: Boolean = true,
