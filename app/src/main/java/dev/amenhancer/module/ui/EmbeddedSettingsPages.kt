@@ -474,6 +474,10 @@ private fun EmbeddedSettingsHost.EmbeddedSettingsCategory(
                     settings.dualPaneHidePlayedLyricsEnabled, EmbeddedSvgIcon.LyricsBlur) { value -> onEdit { it.copy(dualPaneHidePlayedLyricsEnabled = value) } }
                 Setting(ModuleText.LYRICS_FONT_BOLD, ModuleText.LYRICS_FONT_BOLD_SUMMARY,
                     settings.lyricsFontBoldEnabled, EmbeddedSvgIcon.Document) { value -> onEdit { it.copy(lyricsFontBoldEnabled = value) } }
+                Setting(ModuleText.LYRIC_AUTO_RETURN, ModuleText.LYRIC_AUTO_RETURN_SUMMARY,
+                    settings.lyricAutoReturnEnabled, EmbeddedSvgIcon.LyricsBlur) { value ->
+                    onEdit { it.copy(lyricAutoReturnEnabled = value) }
+                }
                 Setting(ModuleText.LYRIC_LINE_FLASH, ModuleText.LYRIC_LINE_FLASH_SUMMARY,
                     settings.lyricLineFlashEnabled, EmbeddedSvgIcon.LyricEffects) { value ->
                     onEdit { it.copy(lyricLineFlashEnabled = value) }

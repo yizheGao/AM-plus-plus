@@ -68,6 +68,8 @@ data class ModuleSettings(
     val lyricGlowBandPercent: Int = 18,
     /** Seconds per ambient breath; 0 keeps the glow steady between lyric lines. */
     val lyricGlowBreathSeconds: Int = 7,
+    /** Scrolls the lyric list back to the playing line a few seconds after the user scrolls away. */
+    val lyricAutoReturnEnabled: Boolean = true,
     val lyricEdgeFeatherEnabled: Boolean = true,
     /** Enables the native rush-gradient adaptation for CJK karaoke lyrics. */
     val cjkKaraokeAnimationEnabled: Boolean = true,

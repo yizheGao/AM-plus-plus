@@ -19,7 +19,7 @@ internal class LyricBlurViewSession(
     viewGeneration: Long,
     private val contract: AppleMusicLyricBlurContract,
     effects: LyricBlurEffectOwner,
-    settingsProvider: () -> dev.amenhancer.module.model.ModuleSettings,
+    private val settingsProvider: () -> dev.amenhancer.module.model.ModuleSettings,
     observeModel: (LyricBlurViewSession, Any) -> Unit,
 ) : AutoCloseable {
     val port = AppleMusicLyricBlurHostPort(owner, contract,
@@ -45,6 +45,10 @@ internal class LyricBlurViewSession(
     private var childListener: Any? = null
     private var preDrawObserver: ViewTreeObserver? = null
     private var restore: Runnable? = null
+    /** Pending snap-back to the playing line, and the frame-stepped walk that performs it. */
+    private var autoReturn: Runnable? = null
+    private var returning = false
+    private var returnSteps = 0
     private var bindingSequence = 0L
     private val bindingGenerations = WeakHashMap<View, Long>()
     private val observedRows = WeakHashMap<View, Boolean>()
@@ -56,7 +60,7 @@ internal class LyricBlurViewSession(
     private val attach = object : View.OnAttachStateChangeListener {
         override fun onViewAttachedToWindow(view: View) { installPreDraw(); requestData() }
         override fun onViewDetachedFromWindow(view: View) {
-            cancelRestore(); cancelFrame(); removePreDraw()
+            cancelRestore(); cancelAutoReturn(); cancelFrame(); removePreDraw()
             port.stopObservingAnimations()
             state = LyricBlurReducer.reduce(state, LyricBlurEvent.Touch(epoch, false))
             state = LyricBlurReducer.reduce(state, LyricBlurEvent.Scroll(epoch, 0))
@@ -84,6 +88,7 @@ internal class LyricBlurViewSession(
                 }
                 val changed = next != geometry
                 geometry = next
+                evaluateAutoReturn(rv)
                 if (dirty || changed || renderer.clippingChanged()) { cancelFrame(); renderFrame() }
             } else if (dirty) { cancelFrame(); renderFrame() }
         }
@@ -98,7 +103,7 @@ internal class LyricBlurViewSession(
 
     fun owns(view: View): Boolean = renderer.owns(view)
     fun callbacks(): List<Pair<String, Any>> = port.callbacks()
-    fun documentInstalled() { documentDirty = true; cancelRestore(); requestData() }
+    fun documentInstalled() { documentDirty = true; cancelRestore(); cancelAutoReturn(); requestData() }
     fun displayChanged() = requestData()
 
     fun beforeBind(view: View) {
@@ -127,6 +132,7 @@ internal class LyricBlurViewSession(
             state = next
             targetsDirty = true
             cancelRestore()
+            cancelAutoReturn()
             requestData()
         }
         maybeRestore()
@@ -137,12 +143,14 @@ internal class LyricBlurViewSession(
         state = LyricBlurReducer.reduce(state, LyricBlurEvent.Scroll(epoch, scrollState))
         targetsDirty = true
         cancelRestore()
+        cancelAutoReturn()
         requestData()
         maybeRestore()
     }
 
     fun seek() {
         cancelRestore()
+        cancelAutoReturn()
         port.seek()
         state = LyricBlurReducer.reduce(state, LyricBlurEvent.Seek(epoch.copy(playback = epoch.playback + 1)))
         epoch = state.epoch
@@ -240,6 +248,7 @@ internal class LyricBlurViewSession(
             }
             rows = freshRows
             targetsDirty = false
+            if (returning && rv != null) guarded { continueReturn(rv) }
             maybeRestore()
         }
         val rv = recycler ?: return
@@ -273,6 +282,45 @@ internal class LyricBlurViewSession(
         documentDirty = true
     }
 
+    private companion object {
+        /** Long enough that reading a few lines ahead still feels intentional. */
+        const val AUTO_RETURN_DELAY_MS = 3_000L
+        /** ~13 screens: a guard against a list that refuses to move (top/bottom). */
+        const val AUTO_RETURN_MAX_STEPS = 40
+    }
+
+    /**
+     * The host detaches its own follow as soon as the list is dragged, and neither its
+     * `setScrollState` seam nor a plain OnScrollListener is dependable on every build, so the
+     * decision is made from what we already observe every frame: which rows are bound.
+     */
+    private fun evaluateAutoReturn(rv: ViewGroup) {
+        if (closed) return
+        if (!autoReturnEnabled()) { cancelAutoReturn(); returning = false; return }
+        val anchor = anchorOrdinals()
+        if (anchor == null) { cancelAutoReturn(); returning = false; return }
+        if (rows.any { it.identity.lyricOrdinal in anchor }) {
+            // Back on screen: either our own walk finished or the host re-centred by itself.
+            cancelAutoReturn()
+            returning = false
+            return
+        }
+        val scrolling = runCatching {
+            (contract.method("getScrollState").invoke(rv) as? Number)?.toInt()
+        }.getOrNull() ?: 0
+        if (scrolling != 0 || state.touchActive) {
+            cancelAutoReturn()
+            returning = false
+            return
+        }
+        if (autoReturn == null && !returning) scheduleAutoReturn()
+    }
+
+    private fun maybeScheduleAutoReturn() {
+        if (closed || state.touchActive) return
+        scheduleAutoReturn()
+    }
+
     private fun maybeRestore() {
         if (closed || restore != null || state.interaction != LyricBlurInteraction.BROWSING ||
             state.touchActive || state.scrollState != 0 || rootRef.get()?.isAttachedToWindow != true) return
@@ -290,6 +338,96 @@ internal class LyricBlurViewSession(
         }
         restore = task
         handler.postDelayed(task, 1_000L)
+        scheduleAutoReturn()
+    }
+
+    /** Ordinal(s) the list should return to; instrumental gaps target the line before them. */
+    private fun anchorOrdinals(): Set<Int>? = when (val anchor = state.focusAnchor) {
+        is LyricFocusAnchor.Lines -> anchor.ordinals.ifEmpty { null }
+        is LyricFocusAnchor.Instrumental -> setOf(anchor.beforeOrdinal - 1).filter { it >= 0 }.toSet().ifEmpty { null }
+        else -> null
+    }
+
+    private fun autoReturnEnabled(): Boolean = runCatching {
+        settingsProvider().lyricAutoReturnEnabled
+    }.getOrDefault(false)
+
+    /**
+     * The host detaches its own follow as soon as the list is dragged, so a snap-back needs
+     * our own scroll. It is scheduled only after the browse gesture has settled, and any new
+     * touch, scroll, seek or document cancels it.
+     */
+    private fun scheduleAutoReturn() {
+        if (!autoReturnEnabled()) return
+        cancelAutoReturn()
+        val task = Runnable {
+            autoReturn = null
+            if (closed || state.touchActive || state.scrollState != 0) return@Runnable
+            if (!autoReturnEnabled()) return@Runnable
+            val anchor = anchorOrdinals() ?: return@Runnable
+            ModernXposedRuntime.log("lyric auto return: begin anchor=$anchor")
+            returning = true
+            returnSteps = 0
+            requestData()
+        }
+        autoReturn = task
+        handler.postDelayed(task, AUTO_RETURN_DELAY_MS)
+    }
+
+    /** RecyclerView method; looked up on the host class so the module stays free of androidx. */
+    private fun smoothScrollBy(rv: ViewGroup, dy: Int) {
+        runCatching {
+            rv.javaClass
+                .getMethod("smoothScrollBy", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+                .invoke(rv, 0, dy)
+        }
+    }
+
+    private fun cancelAutoReturn() {
+        autoReturn?.let(handler::removeCallbacks)
+        autoReturn = null
+        returning = false
+    }
+
+    /**
+     * Called with fresh [rows] on every frame while a return is pending: walk towards the
+     * anchor until it is on screen, then centre it. Walking instead of jumping keeps this
+     * independent of adapter positions, which shift when the host inserts gap rows.
+     */
+    private fun continueReturn(rv: ViewGroup) {
+        if (!returning) return
+        if (closed || state.touchActive || state.scrollState != 0) { returning = false; return }
+        val anchor = anchorOrdinals() ?: run {
+            returning = false
+            return
+        }
+        val anchorRow = rows.firstOrNull { it.identity.lyricOrdinal in anchor }
+        if (anchorRow != null) {
+            returning = false
+            ModernXposedRuntime.log("lyric auto return: centred after ${returnSteps} step(s)")
+            val contentHeight = rv.height - rv.paddingTop - rv.paddingBottom
+            if (contentHeight <= 0) return
+            val target = rv.paddingTop + contentHeight / 2
+            val centre = (anchorRow.view.top + anchorRow.view.bottom) / 2
+            val dy = centre - target
+            if (dy != 0) smoothScrollBy(rv, dy)
+            return
+        }
+        val ordinals = rows.mapNotNull { it.identity.lyricOrdinal }
+        if (ordinals.isEmpty() || returnSteps >= AUTO_RETURN_MAX_STEPS) {
+            returning = false
+            return
+        }
+        returnSteps += 1
+        val step = (rv.height / 3).coerceAtLeast(1)
+        val forward = ordinals.max() < anchor.min()
+        if (returnSteps == 1 || returnSteps % 8 == 0) {
+            ModernXposedRuntime.log(
+                "lyric auto return: step=$returnSteps anchor=$anchor visible=${ordinals.min()}..${ordinals.max()} forward=$forward",
+            )
+        }
+        rv.scrollBy(0, if (forward) step else -step)
+        requestData()
     }
 
     private fun cancelRestore() { restore?.let(handler::removeCallbacks); restore = null }

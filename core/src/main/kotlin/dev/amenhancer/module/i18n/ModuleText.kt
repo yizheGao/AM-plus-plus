@@ -287,6 +287,8 @@ enum class ModuleText(internal val english: String, internal val chinese: String
     LYRIC_GLOW_BAND_SUMMARY("How far the edge light reaches inwards · 0 turns the glow off", "边缘光向内的宽度 · 0 关闭柔光"),
     LYRIC_GLOW_BREATH("Breathing", "呼吸节奏"),
     LYRIC_GLOW_BREATH_SUMMARY("Seconds per breath · 0 keeps it steady between lines", "每次呼吸的秒数 · 0 表示只在换行时亮、平时不呼吸"),
+    LYRIC_AUTO_RETURN("Snap lyrics back", "歌词自动回弹"),
+    LYRIC_AUTO_RETURN_SUMMARY("Returns to the playing line a few seconds after you scroll away", "手动滑动后几秒回到正在播放的歌词"),
     LYRIC_EDGE_FEATHER("Edge feather", "边缘羽化"),
     LYRIC_EDGE_FEATHER_SUMMARY("Lyric rows fade towards the top and bottom edge of the viewport", "歌词行在视口上下边缘渐隐"),
     TABLET_HIDE_PLAYED_LYRICS("Hide sung lines", "已唱歌词消失"),
