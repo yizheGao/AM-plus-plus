@@ -42,6 +42,8 @@ internal object PlayerSheetRestore {
     private var lastFocus = true
     private var sheetHiddenAt = 0L
     private var wasVisible = false
+    /** Rotation recreates the activity: focus blips and the sheet is briefly not laid out. */
+    private var suppressUntil = 0L
 
     private val tick = object : Runnable {
         override fun run() {
@@ -58,7 +60,8 @@ internal object PlayerSheetRestore {
                 val shouldRestore = withinWindow && wasVisible
                 sheetHiddenAt = 0L
                 wasVisible = false
-                if (shouldRestore) {
+                val suppressed = SystemClock.uptimeMillis() < suppressUntil
+                if (shouldRestore && !suppressed) {
                     view.postDelayed({
                         if (!playerSheetVisible(view) && reopen(view)) {
                             ModernXposedRuntime.log("$TAG: player sheet restored after dialog")
@@ -85,6 +88,13 @@ internal object PlayerSheetRestore {
 
             override fun onActivityPaused(activity: Activity) {
                 if (activity.packageName != ModuleConstants.TARGET_PACKAGE) return
+                if (activity.isChangingConfigurations) {
+                    // Rotation/theme change: the sheet collapses and comes back on its own, so a
+                    // synthetic mini-player click here would fight the host and flash the page.
+                    suppressUntil = SystemClock.uptimeMillis() + 2_500L
+                    sheetHiddenAt = 0L
+                    wasVisible = false
+                }
                 handler.removeCallbacks(tick)
                 decor = WeakReference(null)
                 sheetHiddenAt = 0L

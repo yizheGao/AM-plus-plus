@@ -447,6 +447,18 @@ internal object GlowLayer {
             setWillNotDraw(false)
         }
 
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            // Paint on the first frame after a rotation instead of waiting for the loop tick.
+            alpha = 1f
+            invalidate()
+        }
+
+        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+            super.onSizeChanged(w, h, oldw, oldh)
+            invalidate()
+        }
+
         override fun onDraw(canvas: Canvas) {
             val w = width
             val h = height
