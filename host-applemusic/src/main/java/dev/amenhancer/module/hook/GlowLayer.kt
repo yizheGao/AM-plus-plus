@@ -410,10 +410,12 @@ internal object GlowLayer {
                 0f, 0f, 1f,
                 intArrayOf(
                     Color.argb(255, 255, 255, 255),
+                    Color.argb(190, 255, 255, 255),
                     Color.argb(120, 255, 255, 255),
+                    Color.argb(55, 255, 255, 255),
                     Color.TRANSPARENT,
                 ),
-                floatArrayOf(0f, 0.45f, 1f),
+                floatArrayOf(0f, 0.25f, 0.5f, 0.75f, 1f),
                 Shader.TileMode.CLAMP,
             )
         }
@@ -691,16 +693,16 @@ internal object GlowLayer {
 
         private fun ensureDither() {
             if (dither != null) return
-            val size = 64
+            val size = 128
             val tile = runCatching { Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888) }
                 .getOrNull() ?: return
             val pixels = IntArray(size * size)
-            val bayer = intArrayOf(0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5)
+            // Random (not ordered) noise at ±6 levels: a 4x4 Bayer pattern still leaves visible
+            // contour lines on a slow 8-bit ramp, random noise does not.
+            val random = java.util.Random(0x5EED)
             for (y in 0 until size) {
                 for (x in 0 until size) {
-                    // A few luminance steps of ordered noise: enough to break the 8-bit
-                    // stair-steps on a large soft ramp, invisible as texture.
-                    val value = bayer[(y % 4) * 4 + (x % 4)] * 4 / 15
+                    val value = random.nextInt(7)
                     pixels[y * size + x] = Color.argb(255, value, value, value)
                 }
             }
