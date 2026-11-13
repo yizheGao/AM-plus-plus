@@ -81,9 +81,11 @@ internal object GlowLayer {
         val detail: Float,
         val breathMs: Float,
         val aurora: Boolean,
+        val speed: Float,
+        val motion: Int,
     )
 
-    @Volatile private var config = GlowConfig(false, 1f, 0.18f, 7_000f, false)
+    @Volatile private var config = GlowConfig(false, 1f, 0.18f, 7_000f, false, 1f, 1)
     /** Test-only override so a style can be inspected without walking the settings UI. */
     @Volatile private var forceAurora: Boolean? = null
     @Volatile private var configAt = 0L
@@ -118,6 +120,8 @@ internal object GlowLayer {
             view.cover = BackgroundPulse.coverTexture()
             view.sheet = sheetRef.get()
             view.aurora = config.aurora
+            view.speed = config.speed
+            view.motion = config.motion
             view.alpha = 1f
             view.invalidate()
             handler.postDelayed(this, if (energy > 0f) FRAME_MS else IDLE_FRAME_MS)
@@ -223,6 +227,8 @@ internal object GlowLayer {
             detail = detail,
             breathMs = if (breathSeconds > 0) breathSeconds * 1000f else 0f,
             aurora = forceAurora ?: (settings?.lyricGlowAuroraEnabled == true),
+            speed = ((settings?.lyricGlowSpeedPercent ?: 100).coerceAtLeast(0)) / 100f,
+            motion = settings?.lyricAuroraMotion ?: 1,
         )
         config = fresh
         return fresh
@@ -395,6 +401,8 @@ internal object GlowLayer {
         var breathing: Boolean = false
         var cover: Bitmap? = null
         var aurora: Boolean = false
+        var speed: Float = 1f
+        var motion: Int = 1
         /** The sheet that clips this layer: when it is only the mini-player bar, draw nothing. */
         var sheet: View? = null
         private var curtain: Bitmap? = null
@@ -494,7 +502,8 @@ internal object GlowLayer {
             Color.colorToHSV(mixed, hsv)
             // Slow drift: each cell breathes on its own phase so the wash never looks frozen.
             val phase = (col * 0.7f + row * 1.3f) * TWO_PI_THIRD
-            val drift = sin(nowMs / 9_000f + phase) * (if (breathing) 0.035f else 0.012f)
+            val drift = sin(nowMs / 9_000f * speed.coerceAtLeast(0.2f) + phase) *
+                (if (breathing) 0.035f else 0.012f)
             hsv[0] = (hsv[0] + drift * 220f + 360f) % 360f
             hsv[1] = (hsv[1] * 1.30f * (0.95f + 0.05f * breath)).coerceIn(0f, 1f)
             val base = VALUE_FLOOR + (VALUE_CEILING - VALUE_FLOOR) * hsv[2]
@@ -591,17 +600,20 @@ internal object GlowLayer {
          * over the screen instead of only sliding along the bottom edge.
          */
         private fun drawAurora(canvas: Canvas, w: Int, h: Int, nowMs: Long) {
-            val t = nowMs / 1000f
+            val t = (nowMs / 1000f) * speed
+            // Motion presets: calm slows and flattens the paths, rhythmic widens and speeds them.
+            val ampScale = when (motion) { 0 -> 0.65f; 2 -> 1.30f; else -> 1f }
+            val rateScale = when (motion) { 0 -> 0.65f; 2 -> 1.45f; else -> 1f }
             val tint = auroraTint()
             ballPaint.colorFilter = android.graphics.PorterDuffColorFilter(tint, android.graphics.PorterDuff.Mode.SRC_IN)
             val edge = minOf(w, h).toFloat()
             for (ribbon in 0 until AURORA_RIBBONS) {
                 val phase = ribbon * 2.1f
-                val baseY = h * (0.5f + 0.40f * sin(t * 0.13f + phase))
-                val amp = h * (0.10f + 0.07f * sin(t * 0.09f + phase * 1.7f))
-                val freq = 1.1f + 0.6f * sin(t * 0.07f + phase * 0.6f)
-                val drift = 0.18f * sin(t * 0.11f + phase * 1.3f)
-                val radius = edge * (0.10f + 0.02f * sin(t * 0.19f + phase))
+                val baseY = h * (0.5f + 0.40f * sin(t * 0.13f * rateScale + phase))
+                val amp = h * (0.10f + 0.07f * sin(t * 0.09f * rateScale + phase * 1.7f)) * ampScale
+                val freq = 1.1f + 0.6f * sin(t * 0.07f * rateScale + phase * 0.6f)
+                val drift = 0.18f * sin(t * 0.11f * rateScale + phase * 1.3f)
+                val radius = edge * (0.15f + 0.03f * sin(t * 0.19f * rateScale + phase))
                 for (step in 0..AURORA_STEPS) {
                     val u = step / AURORA_STEPS.toFloat()
                     val x = w * (u + drift).coerceIn(0.02f, 0.98f)
@@ -609,7 +621,7 @@ internal object GlowLayer {
                         .coerceIn(h * 0.05f, h * 0.95f)
                     val travel = 0.5f + 0.5f * sin(u * TWO_PI * 1.6f - t * 0.37f + phase)
                     val edgeFade = 1f - 0.55f * kotlin.math.abs(u - 0.5f) * 2f
-                    val alpha = ((0.05f + 0.06f * travel + 0.10f * level) * edgeFade).coerceIn(0f, 0.30f)
+                    val alpha = ((0.07f + 0.06f * travel + 0.10f * level) * edgeFade).coerceIn(0f, 0.30f)
                     if (alpha <= 0.004f) continue
                     canvas.save()
                     canvas.translate(x, y)
@@ -702,7 +714,7 @@ internal object GlowLayer {
             val random = java.util.Random(0x5EED)
             for (y in 0 until size) {
                 for (x in 0 until size) {
-                    val value = random.nextInt(7)
+                    val value = random.nextInt(9)
                     pixels[y * size + x] = Color.argb(255, value, value, value)
                 }
             }

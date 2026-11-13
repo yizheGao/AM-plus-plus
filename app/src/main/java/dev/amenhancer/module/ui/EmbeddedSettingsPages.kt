@@ -501,30 +501,64 @@ private fun EmbeddedSettingsHost.EmbeddedSettingsCategory(
                     settings.lyricAutoReturnEnabled, EmbeddedSvgIcon.LyricsBlur) { value ->
                     onEdit { it.copy(lyricAutoReturnEnabled = value) }
                 }
-                EmbeddedSettingRange(
-                    title = localizedText(ModuleText.LYRIC_GLOW_STRENGTH),
-                    value = settings.lyricGlowStrengthPercent,
-                    range = ModuleSettings.MIN_LYRIC_GLOW_STRENGTH_PERCENT..ModuleSettings.MAX_LYRIC_GLOW_STRENGTH_PERCENT,
-                    unit = "%",
-                    summary = localizedText(ModuleText.LYRIC_GLOW_STRENGTH_SUMMARY),
-                    defaultValue = 100,
-                ) { value -> onEdit { it.copy(lyricGlowStrengthPercent = value) } }
-                EmbeddedSettingRange(
-                    title = localizedText(ModuleText.LYRIC_GLOW_BAND),
-                    value = settings.lyricGlowBandPercent,
-                    range = ModuleSettings.MIN_LYRIC_GLOW_BAND_PERCENT..ModuleSettings.MAX_LYRIC_GLOW_BAND_PERCENT,
-                    unit = "%",
-                    summary = localizedText(ModuleText.LYRIC_GLOW_BAND_SUMMARY),
-                    defaultValue = 18,
-                ) { value -> onEdit { it.copy(lyricGlowBandPercent = value) } }
-                EmbeddedSettingRange(
-                    title = localizedText(ModuleText.LYRIC_GLOW_BREATH),
-                    value = settings.lyricGlowBreathSeconds,
-                    range = ModuleSettings.MIN_LYRIC_GLOW_BREATH_SECONDS..ModuleSettings.MAX_LYRIC_GLOW_BREATH_SECONDS,
-                    unit = " s",
-                    summary = localizedText(ModuleText.LYRIC_GLOW_BREATH_SUMMARY),
-                    defaultValue = 7,
-                ) { value -> onEdit { it.copy(lyricGlowBreathSeconds = value) } }
+                val glowStyle = when {
+                    !settings.lyricLineFlashEnabled -> 0
+                    settings.lyricGlowAuroraEnabled -> 2
+                    else -> 1
+                }
+                if (glowStyle != 0) {
+                    EmbeddedSettingRange(
+                        title = localizedText(ModuleText.LYRIC_GLOW_STRENGTH),
+                        value = settings.lyricGlowStrengthPercent,
+                        range = ModuleSettings.MIN_LYRIC_GLOW_STRENGTH_PERCENT..ModuleSettings.MAX_LYRIC_GLOW_STRENGTH_PERCENT,
+                        unit = "%",
+                        summary = localizedText(ModuleText.LYRIC_GLOW_STRENGTH_SUMMARY),
+                        defaultValue = 100,
+                    ) { value -> onEdit { it.copy(lyricGlowStrengthPercent = value) } }
+                }
+                if (glowStyle == 2) {
+                    EmbeddedSettingRange(
+                        title = localizedText(ModuleText.LYRIC_GLOW_SPEED),
+                        value = settings.lyricGlowSpeedPercent,
+                        range = ModuleSettings.MIN_LYRIC_GLOW_SPEED_PERCENT..ModuleSettings.MAX_LYRIC_GLOW_SPEED_PERCENT,
+                        unit = "%",
+                        summary = localizedText(ModuleText.LYRIC_GLOW_SPEED_SUMMARY),
+                        defaultValue = 100,
+                    ) { value -> onEdit { it.copy(lyricGlowSpeedPercent = value) } }
+                    EmbeddedSettingDropdown(
+                        title = localizedText(ModuleText.LYRIC_AURORA_MOTION),
+                        summary = localizedText(ModuleText.LYRIC_AURORA_MOTION_SUMMARY),
+                        value = when (settings.lyricAuroraMotion) {
+                            0 -> localizedText(ModuleText.LYRIC_AURORA_CALM)
+                            2 -> localizedText(ModuleText.LYRIC_AURORA_RHYTHMIC)
+                            else -> localizedText(ModuleText.LYRIC_AURORA_FLOWING)
+                        },
+                        options = listOf(
+                            localizedText(ModuleText.LYRIC_AURORA_CALM),
+                            localizedText(ModuleText.LYRIC_AURORA_FLOWING),
+                            localizedText(ModuleText.LYRIC_AURORA_RHYTHMIC),
+                        ),
+                        icon = EmbeddedSvgIcon.LyricEffects,
+                    ) { index -> onEdit { it.copy(lyricAuroraMotion = index) } }
+                }
+                if (glowStyle == 1) {
+                    EmbeddedSettingRange(
+                        title = localizedText(ModuleText.LYRIC_GLOW_BAND),
+                        value = settings.lyricGlowBandPercent,
+                        range = ModuleSettings.MIN_LYRIC_GLOW_BAND_PERCENT..ModuleSettings.MAX_LYRIC_GLOW_BAND_PERCENT,
+                        unit = "%",
+                        summary = localizedText(ModuleText.LYRIC_GLOW_BAND_SUMMARY),
+                        defaultValue = 18,
+                    ) { value -> onEdit { it.copy(lyricGlowBandPercent = value) } }
+                    EmbeddedSettingRange(
+                        title = localizedText(ModuleText.LYRIC_GLOW_BREATH),
+                        value = settings.lyricGlowBreathSeconds,
+                        range = ModuleSettings.MIN_LYRIC_GLOW_BREATH_SECONDS..ModuleSettings.MAX_LYRIC_GLOW_BREATH_SECONDS,
+                        unit = " s",
+                        summary = localizedText(ModuleText.LYRIC_GLOW_BREATH_SUMMARY),
+                        defaultValue = 7,
+                    ) { value -> onEdit { it.copy(lyricGlowBreathSeconds = value) } }
+                }
                 EmbeddedSettingRange(
                     title = localizedText(ModuleText.LYRIC_BLUR_OFFSET),
                     value = settings.lyricBlurRadiusOffsetPx,

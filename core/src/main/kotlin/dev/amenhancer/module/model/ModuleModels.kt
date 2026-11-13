@@ -72,6 +72,10 @@ data class ModuleSettings(
     val lyricAutoReturnEnabled: Boolean = true,
     /** Scheme B: drifting aurora light over the cover-derived wash instead of the plain mesh. */
     val lyricGlowAuroraEnabled: Boolean = false,
+    /** Motion speed of the glow in percent of the tuned default; 0 freezes it. */
+    val lyricGlowSpeedPercent: Int = 100,
+    /** Aurora motion preset: 0 calm, 1 flowing, 2 rhythmic. */
+    val lyricAuroraMotion: Int = 1,
     val lyricEdgeFeatherEnabled: Boolean = true,
     /** Enables the native rush-gradient adaptation for CJK karaoke lyrics. */
     val cjkKaraokeAnimationEnabled: Boolean = true,
@@ -117,6 +121,10 @@ data class ModuleSettings(
     val schemaVersion: Int = ModuleConstants.CONFIG_SCHEMA_VERSION,
 ) {
     companion object {
+        const val MIN_LYRIC_GLOW_SPEED_PERCENT = 0
+        const val MAX_LYRIC_GLOW_SPEED_PERCENT = 200
+        const val MIN_LYRIC_AURORA_MOTION = 0
+        const val MAX_LYRIC_AURORA_MOTION = 2
         const val MIN_LYRIC_GLOW_STRENGTH_PERCENT = 0
         const val MAX_LYRIC_GLOW_STRENGTH_PERCENT = 200
         const val MIN_LYRIC_GLOW_BAND_PERCENT = 0
