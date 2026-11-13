@@ -342,13 +342,6 @@ internal object GlowLayer {
                 
                 
                 
-                val scrimAlpha = intent.getFloatExtra("scrimAlpha", -1f)
-                if (scrimAlpha >= 0f) {
-                    val decor = attached?.rootView as? ViewGroup
-                    val scrim = decor?.findViewById<View>(idOf(decor, "top_and_bottom_gradients"))
-                    ModernXposedRuntime.log("$TAG: scrim=${scrim?.javaClass?.simpleName} a=${scrim?.alpha}")
-                    scrim?.alpha = scrimAlpha.coerceIn(0f, 1f)
-                }
                 ModernXposedRuntime.log("$TAG: test pulse strength=$strength holdMs=$holdMs ${status()}")
                 pulse(strength)
             }
