@@ -33,6 +33,26 @@
 
 设置入口：设置 → AM++ → **背景光效**（关闭 / 封面渐变 / 极光），滑块随选择联动。
 
+## 保留的两个版本
+
+| 版本 | 分支 | 提交 | 安装包 | SHA-256 |
+|---|---|---|---|---|
+| **当前版**（含动态背景 A/B、设置整合、暂停/旋转修复） | `ampp-custom` | `a0cd62b` | `AMPP-v1.6.9-mod46-rollback-AppleMusic7.0.0-1614-embedded.apks` | `63714eb2…efb3` |
+| **无光效版**（任何歌词闪光/背景实验之前，最后一个是旋转封面占位缓存） | `ampp-no-glow` | `0663887`（tag `ampp-1.6.9-mod21`） | `AMPP-v1.6.9-mod21-AppleMusic7.0.0-1614-embedded.apks` | `ed3a52e1…9ae4` |
+
+分界点：`65d4e7b 实验：播放页背景律动（默认关闭）` 是第一次背景光效提交，
+`ampp-no-glow` 停在它的父提交 `0663887`，因此完全不含 `GlowLayer`、`BackgroundPulse`、
+光效设置项与相关 hook。
+
+安装任一版本：
+
+```bash
+cd ~/ampp-lab
+adb install-multiple -r -d <拆包目录>/base.apk ...   # 或直接用 .apks 交给安装器
+```
+
+切回当前版：`git checkout ampp-custom`；切到无光效版：`git checkout ampp-no-glow`。
+
 ## 已知限制
 
 - 参考软件的 52 个 shader 是 AES-256-GCM 加密的，密钥推导未完成，方案 A 属**行为复刻**。
