@@ -84,6 +84,8 @@ internal object GlowLayer {
     )
 
     @Volatile private var config = GlowConfig(false, 1f, 0.18f, 7_000f, false)
+    /** Test-only override so a style can be inspected without walking the settings UI. */
+    @Volatile private var forceAurora: Boolean? = null
     @Volatile private var configAt = 0L
 
     private val frame = object : Runnable {
@@ -220,7 +222,7 @@ internal object GlowLayer {
             strength = strength,
             detail = detail,
             breathMs = if (breathSeconds > 0) breathSeconds * 1000f else 0f,
-            aurora = settings?.lyricGlowAuroraEnabled == true,
+            aurora = forceAurora ?: (settings?.lyricGlowAuroraEnabled == true),
         )
         config = fresh
         return fresh
@@ -356,6 +358,11 @@ internal object GlowLayer {
                 
                 
                 
+                if (intent.hasExtra("forceAurora")) {
+                    forceAurora = intent.getBooleanExtra("forceAurora", false)
+                    configAt = 0L
+                    ModernXposedRuntime.log("$TAG: forceAurora=$forceAurora")
+                }
                 ModernXposedRuntime.log("$TAG: test pulse strength=$strength holdMs=$holdMs ${status()}")
                 pulse(strength)
             }
@@ -396,8 +403,19 @@ internal object GlowLayer {
         private val blobPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             blendMode = android.graphics.BlendMode.PLUS
         }
-        private val curtainPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
+        /** One unit-radius soft blob, reused for every ribbon sample (no per-frame allocation). */
+        private val ballPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             blendMode = android.graphics.BlendMode.PLUS
+            shader = android.graphics.RadialGradient(
+                0f, 0f, 1f,
+                intArrayOf(
+                    Color.argb(255, 255, 255, 255),
+                    Color.argb(120, 255, 255, 255),
+                    Color.TRANSPARENT,
+                ),
+                floatArrayOf(0f, 0.45f, 1f),
+                Shader.TileMode.CLAMP,
+            )
         }
         private val ditherPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
             blendMode = android.graphics.BlendMode.PLUS
@@ -564,32 +582,40 @@ internal object GlowLayer {
          * an incommensurate pair of sine waves and fades towards its top, so the motion never
          * loops visibly and never paints a hard edge.
          */
+        /**
+         * Scheme B: soft light ribbons that travel on curves across the whole page. Each ribbon
+         * is a chain of overlapping soft blobs along a sine centreline; the centreline's base
+         * height, amplitude and frequency all drift on incommensurate rates, so the light wanders
+         * over the screen instead of only sliding along the bottom edge.
+         */
         private fun drawAurora(canvas: Canvas, w: Int, h: Int, nowMs: Long) {
             val t = nowMs / 1000f
             val tint = auroraTint()
-            val mask = curtainMask() ?: return
-            val dst = Rect()
-            for (index in 0 until AURORA_CURTAINS) {
-                val phase = index * 1.9f
-                // Three incommensurate rates per ribbon: lateral drift, width breathing and a
-                // travelling intensity band, so the shape keeps changing instead of sliding.
-                val centre = w * (0.5f + 0.40f * sin(t * 0.21f + phase))
-                val sway = w * 0.06f * sin(t * 0.37f + phase * 1.3f)
-                val halfWidth = w * (0.13f + 0.06f * sin(t * 0.29f + phase * 0.7f))
-                val travel = 0.5f + 0.5f * sin(t * 0.43f + phase * 2.1f)
-                val top = h * (0.02f + 0.14f * (0.5f + 0.5f * sin(t * 0.17f + phase * 0.7f)))
-                val alpha = (0.14f + 0.10f * (0.5f + 0.5f * sin(t * 0.31f + phase * 2.3f)) + 0.12f * level)
-                    .coerceIn(0f, 0.40f)
-                dst.set(
-                    (centre - halfWidth + sway).toInt(),
-                    top.toInt(),
-                    (centre + halfWidth + sway).toInt(),
-                    h,
-                )
-                curtainPaint.colorFilter = android.graphics.PorterDuffColorFilter(
-                    withAlpha(tint, alpha * (0.65f + 0.5f * travel)), android.graphics.PorterDuff.Mode.SRC_IN,
-                )
-                canvas.drawBitmap(mask, null, dst, curtainPaint)
+            ballPaint.colorFilter = android.graphics.PorterDuffColorFilter(tint, android.graphics.PorterDuff.Mode.SRC_IN)
+            val edge = minOf(w, h).toFloat()
+            for (ribbon in 0 until AURORA_RIBBONS) {
+                val phase = ribbon * 2.1f
+                val baseY = h * (0.5f + 0.40f * sin(t * 0.13f + phase))
+                val amp = h * (0.10f + 0.07f * sin(t * 0.09f + phase * 1.7f))
+                val freq = 1.1f + 0.6f * sin(t * 0.07f + phase * 0.6f)
+                val drift = 0.18f * sin(t * 0.11f + phase * 1.3f)
+                val radius = edge * (0.10f + 0.02f * sin(t * 0.19f + phase))
+                for (step in 0..AURORA_STEPS) {
+                    val u = step / AURORA_STEPS.toFloat()
+                    val x = w * (u + drift).coerceIn(0.02f, 0.98f)
+                    val y = (baseY + amp * sin(u * TWO_PI * freq + t * 0.23f + phase * 1.9f))
+                        .coerceIn(h * 0.05f, h * 0.95f)
+                    val travel = 0.5f + 0.5f * sin(u * TWO_PI * 1.6f - t * 0.37f + phase)
+                    val edgeFade = 1f - 0.55f * kotlin.math.abs(u - 0.5f) * 2f
+                    val alpha = ((0.05f + 0.06f * travel + 0.10f * level) * edgeFade).coerceIn(0f, 0.30f)
+                    if (alpha <= 0.004f) continue
+                    canvas.save()
+                    canvas.translate(x, y)
+                    canvas.scale(radius, radius)
+                    ballPaint.alpha = (alpha * 255f).toInt().coerceIn(0, 255)
+                    canvas.drawCircle(0f, 0f, 1f, ballPaint)
+                    canvas.restore()
+                }
             }
         }
 
@@ -684,7 +710,8 @@ internal object GlowLayer {
         }
 
         private companion object {
-            const val AURORA_CURTAINS = 4
+            const val AURORA_RIBBONS = 3
+            const val AURORA_STEPS = 26
             const val FALLBACK = 0xFF2A2A33.toInt()
             val TWO_PI_THIRD = (2.0 * Math.PI / 3.0).toFloat()
         }
