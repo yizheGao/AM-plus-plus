@@ -89,7 +89,11 @@ internal object GlowLayer {
         override fun run() {
             val view = attached ?: return stopLooping()
             val root = rootRef.get()
-            if (root == null || !view.isAttachedToWindow || !view.isShown) return stopLooping()
+            if (root == null || !view.isAttachedToWindow || !view.isShown) {
+                // Leaving alpha at 1 here painted the whole collapsed mini-player bar.
+                view.alpha = 0f
+                return stopLooping()
+            }
             val config = config()
             if (!config.on || !expanded(root)) {
                 // The collapsed sheet is only the mini player bar; painting the wash there
@@ -266,7 +270,11 @@ internal object GlowLayer {
         root.setTag(ModuleConstants.MODULE_PACKAGE.hashCode(), true)
         root.addOnLayoutChangeListener { view, left, top, right, bottom, _, _, _, _ ->
             val sizeChanged = view.width != right - left || view.height != bottom - top
-            if (sizeChanged) view.post { runCatching { attachUnsafe(view as ViewGroup) } }
+            if (sizeChanged) {
+                val group = view as ViewGroup
+                if (!expanded(group)) attached?.alpha = 0f
+                view.post { runCatching { attachUnsafe(group) } }
+            }
         }
     }
 
@@ -294,6 +302,7 @@ internal object GlowLayer {
     private fun detach() {
         stopLooping()
         val view = attached ?: return
+        view.alpha = 0f
         runCatching { (view.parent as? ViewGroup)?.removeView(view) }
         attached = null
         rootRef = WeakReference(null)
@@ -405,6 +414,10 @@ internal object GlowLayer {
             val w = width
             val h = height
             if (w <= 0 || h <= 0) return
+            // Collapsed sheet: this view is only as tall as the mini player bar, and painting
+            // there turns the whole bar into a colour band over the page behind it.
+            val page = maxOf(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
+            if (h < page * 0.4f) return
             if (startedAt == 0L) startedAt = SystemClock.uptimeMillis()
             val now = SystemClock.uptimeMillis() - startedAt
             ensureMesh(w, h)
