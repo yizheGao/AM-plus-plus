@@ -48,6 +48,7 @@ internal object GlowLayer {
     private const val BACKGROUND_LAYER = "background_layers"
     private const val FRAME_MS = 50L
     private const val IDLE_FRAME_MS = 120L
+    private const val SETTLE_MS = 400L
     private const val PULSE_ATTACK_MS = 120f
     private const val PULSE_DECAY_MS = 480f
     private const val CONFIG_TTL_MS = 200L
@@ -95,17 +96,17 @@ internal object GlowLayer {
             val view = attached ?: return stopLooping()
             val root = rootRef.get()
             if (root == null || !view.isAttachedToWindow || !view.isShown) {
-                // Leaving alpha at 1 here painted the whole collapsed mini-player bar.
                 view.alpha = 0f
-                return stopLooping()
+                handler.postDelayed(this, SETTLE_MS)
+                return
             }
             val config = config()
             if (!config.on || !expanded(root)) {
-                // The collapsed sheet is only the mini player bar; painting the wash there
-                // leaves a full-width colour band over the page behind it.
+                // Collapsed sheet: keep the loop alive at a slow cadence. Stopping here meant a
+                // resume could stay unpainted until the next lyric line kicked the loop again.
                 view.alpha = 0f
-                pulsePeak = 0f
-                return stopLooping()
+                handler.postDelayed(this, SETTLE_MS)
+                return
             }
             val now = SystemClock.uptimeMillis()
             val energy = energyAt(now)
@@ -268,7 +269,7 @@ internal object GlowLayer {
         rootRef = WeakReference(root)
         sheetRef = WeakReference(decor.findViewById<View>(idOf(decor, "player_sheet_container")))
         watch(root)
-        if (!looping && config().on && expanded(root)) {
+        if (!looping && config().on) {
             looping = true
             handler.post(frame)
         }
