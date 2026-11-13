@@ -355,6 +355,7 @@ private const val EMBEDDED_SETTINGS_RAIL_MIN_WIDTH_DP = 600
 private val EmbeddedSettingsNavigationPages = listOf(
     EmbeddedSettingsPage.CUSTOM_LYRICS,
     EmbeddedSettingsPage.LYRICS_EFFECTS,
+    EmbeddedSettingsPage.BACKGROUND_EFFECTS,
     EmbeddedSettingsPage.INTERFACE,
     EmbeddedSettingsPage.TITLE_REGION,
     EmbeddedSettingsPage.ADVANCED,
@@ -373,6 +374,7 @@ private val EmbeddedSettingsPage.navigationIcon: EmbeddedSvgIcon
     get() = when (navigationCategory) {
         EmbeddedSettingsPage.CUSTOM_LYRICS -> EmbeddedSvgIcon.CustomLyrics
         EmbeddedSettingsPage.LYRICS_EFFECTS -> EmbeddedSvgIcon.LyricEffects
+        EmbeddedSettingsPage.BACKGROUND_EFFECTS -> EmbeddedSvgIcon.LyricsBlur
         EmbeddedSettingsPage.INTERFACE -> EmbeddedSvgIcon.TabletDualPane
         EmbeddedSettingsPage.TITLE_REGION -> EmbeddedSvgIcon.TitleMode
         EmbeddedSettingsPage.PLUGINS -> EmbeddedSvgIcon.Plugins
@@ -385,6 +387,7 @@ private val EmbeddedSettingsPage.title: ModuleText
         EmbeddedSettingsPage.CUSTOM_LYRICS -> ModuleText.CATEGORY_LYRICS_MANAGEMENT
         EmbeddedSettingsPage.AUTOMATIC_LYRICS -> ModuleText.AUTO_LYRICS
         EmbeddedSettingsPage.LYRICS_EFFECTS -> ModuleText.CATEGORY_LYRICS_EFFECTS
+        EmbeddedSettingsPage.BACKGROUND_EFFECTS -> ModuleText.CATEGORY_BACKGROUND_EFFECTS
         EmbeddedSettingsPage.INTERFACE -> ModuleText.CATEGORY_INTERFACE
         EmbeddedSettingsPage.TITLE_REGION -> ModuleText.CATEGORY_TITLE_REGION
         EmbeddedSettingsPage.ADVANCED -> ModuleText.ADVANCED_SETTINGS
@@ -423,6 +426,18 @@ private fun EmbeddedSettingsHost.EmbeddedSettingsHome(
             EmbeddedSvgIcon.LyricEffects,
         ) { onOpen(EmbeddedSettingsPage.LYRICS_EFFECTS) }
         EmbeddedSettingLink(
+            localizedText(ModuleText.CATEGORY_BACKGROUND_EFFECTS),
+            localizedText(
+                ModuleText.SUMMARY_BACKGROUND_EFFECTS,
+                when {
+                    !settings.lyricLineFlashEnabled -> localizedText(ModuleText.LYRIC_GLOW_OFF)
+                    settings.lyricGlowAuroraEnabled -> localizedText(ModuleText.LYRIC_GLOW_AURORA)
+                    else -> localizedText(ModuleText.LYRIC_GLOW_REFERENCE)
+                },
+            ),
+            EmbeddedSvgIcon.LyricsBlur,
+        ) { onOpen(EmbeddedSettingsPage.BACKGROUND_EFFECTS) }
+        EmbeddedSettingLink(
             localizedText(ModuleText.CATEGORY_INTERFACE),
             localizedText(ModuleText.SUMMARY_INTERFACE, state(settings.dualPaneEnabled), state(settings.phoneLiquidGlassEnabled)),
             EmbeddedSvgIcon.TabletDualPane,
@@ -460,20 +475,8 @@ private fun EmbeddedSettingsHost.EmbeddedSettingsCategory(
     onOpenAnimationSettings: () -> Unit,
 ) {
     when (page) {
-        EmbeddedSettingsPage.LYRICS_EFFECTS -> {
+        EmbeddedSettingsPage.BACKGROUND_EFFECTS -> {
             EmbeddedSettingsGroup {
-                Setting(ModuleText.BIDIRECTIONAL_LYRIC_BLUR, ModuleText.BIDIRECTIONAL_LYRIC_BLUR_SUMMARY,
-                    settings.futureBlurEnabled, EmbeddedSvgIcon.LyricsBlur) { value -> onEdit { it.copy(futureBlurEnabled = value) } }
-                Setting(ModuleText.CJK_KARAOKE_ANIMATION, ModuleText.CJK_KARAOKE_ANIMATION_SUMMARY,
-                    settings.cjkKaraokeAnimationEnabled, EmbeddedSvgIcon.Karaoke) { value -> onEdit { it.copy(cjkKaraokeAnimationEnabled = value) } }
-                Setting(ModuleText.LYRIC_EFFECTS_OPTIMIZATION, ModuleText.LYRIC_EFFECTS_OPTIMIZATION_SUMMARY,
-                    settings.lyricEffectsOptimizationEnabled, EmbeddedSvgIcon.LyricEffects) { value -> onEdit { it.copy(lyricEffectsOptimizationEnabled = value) } }
-                Setting(ModuleText.LYRIC_EDGE_FEATHER, ModuleText.LYRIC_EDGE_FEATHER_SUMMARY,
-                    settings.lyricEdgeFeatherEnabled, EmbeddedSvgIcon.LyricsBlur) { value -> onEdit { it.copy(lyricEdgeFeatherEnabled = value) } }
-                Setting(ModuleText.TABLET_HIDE_PLAYED_LYRICS, ModuleText.TABLET_HIDE_PLAYED_LYRICS_SUMMARY,
-                    settings.dualPaneHidePlayedLyricsEnabled, EmbeddedSvgIcon.LyricsBlur) { value -> onEdit { it.copy(dualPaneHidePlayedLyricsEnabled = value) } }
-                Setting(ModuleText.LYRICS_FONT_BOLD, ModuleText.LYRICS_FONT_BOLD_SUMMARY,
-                    settings.lyricsFontBoldEnabled, EmbeddedSvgIcon.Document) { value -> onEdit { it.copy(lyricsFontBoldEnabled = value) } }
                 EmbeddedSettingDropdown(
                     title = localizedText(ModuleText.LYRIC_GLOW_STYLE),
                     summary = localizedText(ModuleText.LYRIC_GLOW_STYLE_SUMMARY),
@@ -496,10 +499,6 @@ private fun EmbeddedSettingsHost.EmbeddedSettingsCategory(
                             else -> it.copy(lyricLineFlashEnabled = true, lyricGlowAuroraEnabled = true)
                         }
                     }
-                }
-                Setting(ModuleText.LYRIC_AUTO_RETURN, ModuleText.LYRIC_AUTO_RETURN_SUMMARY,
-                    settings.lyricAutoReturnEnabled, EmbeddedSvgIcon.LyricsBlur) { value ->
-                    onEdit { it.copy(lyricAutoReturnEnabled = value) }
                 }
                 val glowStyle = when {
                     !settings.lyricLineFlashEnabled -> 0
@@ -558,6 +557,26 @@ private fun EmbeddedSettingsHost.EmbeddedSettingsCategory(
                         summary = localizedText(ModuleText.LYRIC_GLOW_BREATH_SUMMARY),
                         defaultValue = 7,
                     ) { value -> onEdit { it.copy(lyricGlowBreathSeconds = value) } }
+                }
+            }
+        }
+        EmbeddedSettingsPage.LYRICS_EFFECTS -> {
+            EmbeddedSettingsGroup {
+                Setting(ModuleText.BIDIRECTIONAL_LYRIC_BLUR, ModuleText.BIDIRECTIONAL_LYRIC_BLUR_SUMMARY,
+                    settings.futureBlurEnabled, EmbeddedSvgIcon.LyricsBlur) { value -> onEdit { it.copy(futureBlurEnabled = value) } }
+                Setting(ModuleText.CJK_KARAOKE_ANIMATION, ModuleText.CJK_KARAOKE_ANIMATION_SUMMARY,
+                    settings.cjkKaraokeAnimationEnabled, EmbeddedSvgIcon.Karaoke) { value -> onEdit { it.copy(cjkKaraokeAnimationEnabled = value) } }
+                Setting(ModuleText.LYRIC_EFFECTS_OPTIMIZATION, ModuleText.LYRIC_EFFECTS_OPTIMIZATION_SUMMARY,
+                    settings.lyricEffectsOptimizationEnabled, EmbeddedSvgIcon.LyricEffects) { value -> onEdit { it.copy(lyricEffectsOptimizationEnabled = value) } }
+                Setting(ModuleText.LYRIC_EDGE_FEATHER, ModuleText.LYRIC_EDGE_FEATHER_SUMMARY,
+                    settings.lyricEdgeFeatherEnabled, EmbeddedSvgIcon.LyricsBlur) { value -> onEdit { it.copy(lyricEdgeFeatherEnabled = value) } }
+                Setting(ModuleText.TABLET_HIDE_PLAYED_LYRICS, ModuleText.TABLET_HIDE_PLAYED_LYRICS_SUMMARY,
+                    settings.dualPaneHidePlayedLyricsEnabled, EmbeddedSvgIcon.LyricsBlur) { value -> onEdit { it.copy(dualPaneHidePlayedLyricsEnabled = value) } }
+                Setting(ModuleText.LYRICS_FONT_BOLD, ModuleText.LYRICS_FONT_BOLD_SUMMARY,
+                    settings.lyricsFontBoldEnabled, EmbeddedSvgIcon.Document) { value -> onEdit { it.copy(lyricsFontBoldEnabled = value) } }
+                Setting(ModuleText.LYRIC_AUTO_RETURN, ModuleText.LYRIC_AUTO_RETURN_SUMMARY,
+                    settings.lyricAutoReturnEnabled, EmbeddedSvgIcon.LyricsBlur) { value ->
+                    onEdit { it.copy(lyricAutoReturnEnabled = value) }
                 }
                 EmbeddedSettingRange(
                     title = localizedText(ModuleText.LYRIC_BLUR_OFFSET),
@@ -720,6 +739,9 @@ private fun EmbeddedSettingsHost.showEmbeddedPageDetails(activity: Activity, pag
             ModuleText.AUTO_LYRICS_SOURCE_ORDER to if (settings.automaticLyricsPreferNative) {
                 ModuleText.AUTO_LYRICS_SOURCE_ORDER_NATIVE_HIDDEN
             } else ModuleText.AUTO_LYRICS_SOURCE_ORDER_ALL,
+        )
+        EmbeddedSettingsPage.BACKGROUND_EFFECTS -> listOf(
+            ModuleText.LYRIC_GLOW_STYLE to ModuleText.LYRIC_GLOW_STYLE_SUMMARY,
         )
         EmbeddedSettingsPage.LYRICS_EFFECTS -> listOf(
             ModuleText.BIDIRECTIONAL_LYRIC_BLUR to ModuleText.BIDIRECTIONAL_LYRIC_BLUR_SUMMARY,
