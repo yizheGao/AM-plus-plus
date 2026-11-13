@@ -474,17 +474,32 @@ private fun EmbeddedSettingsHost.EmbeddedSettingsCategory(
                     settings.dualPaneHidePlayedLyricsEnabled, EmbeddedSvgIcon.LyricsBlur) { value -> onEdit { it.copy(dualPaneHidePlayedLyricsEnabled = value) } }
                 Setting(ModuleText.LYRICS_FONT_BOLD, ModuleText.LYRICS_FONT_BOLD_SUMMARY,
                     settings.lyricsFontBoldEnabled, EmbeddedSvgIcon.Document) { value -> onEdit { it.copy(lyricsFontBoldEnabled = value) } }
-                Setting(ModuleText.LYRIC_GLOW_AURORA, ModuleText.LYRIC_GLOW_AURORA_SUMMARY,
-                    settings.lyricGlowAuroraEnabled, EmbeddedSvgIcon.LyricEffects) { value ->
-                    onEdit { it.copy(lyricGlowAuroraEnabled = value) }
+                EmbeddedSettingDropdown(
+                    title = localizedText(ModuleText.LYRIC_GLOW_STYLE),
+                    summary = localizedText(ModuleText.LYRIC_GLOW_STYLE_SUMMARY),
+                    value = when {
+                        !settings.lyricLineFlashEnabled -> localizedText(ModuleText.LYRIC_GLOW_OFF)
+                        settings.lyricGlowAuroraEnabled -> localizedText(ModuleText.LYRIC_GLOW_AURORA)
+                        else -> localizedText(ModuleText.LYRIC_GLOW_REFERENCE)
+                    },
+                    options = listOf(
+                        localizedText(ModuleText.LYRIC_GLOW_OFF),
+                        localizedText(ModuleText.LYRIC_GLOW_REFERENCE),
+                        localizedText(ModuleText.LYRIC_GLOW_AURORA),
+                    ),
+                    icon = EmbeddedSvgIcon.LyricEffects,
+                ) { index ->
+                    onEdit {
+                        when (index) {
+                            0 -> it.copy(lyricLineFlashEnabled = false, lyricGlowAuroraEnabled = false)
+                            1 -> it.copy(lyricLineFlashEnabled = true, lyricGlowAuroraEnabled = false)
+                            else -> it.copy(lyricLineFlashEnabled = true, lyricGlowAuroraEnabled = true)
+                        }
+                    }
                 }
                 Setting(ModuleText.LYRIC_AUTO_RETURN, ModuleText.LYRIC_AUTO_RETURN_SUMMARY,
                     settings.lyricAutoReturnEnabled, EmbeddedSvgIcon.LyricsBlur) { value ->
                     onEdit { it.copy(lyricAutoReturnEnabled = value) }
-                }
-                Setting(ModuleText.LYRIC_LINE_FLASH, ModuleText.LYRIC_LINE_FLASH_SUMMARY,
-                    settings.lyricLineFlashEnabled, EmbeddedSvgIcon.LyricEffects) { value ->
-                    onEdit { it.copy(lyricLineFlashEnabled = value) }
                 }
                 EmbeddedSettingRange(
                     title = localizedText(ModuleText.LYRIC_GLOW_STRENGTH),

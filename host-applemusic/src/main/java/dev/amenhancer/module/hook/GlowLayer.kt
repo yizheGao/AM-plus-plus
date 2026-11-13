@@ -65,6 +65,7 @@ internal object GlowLayer {
 
     @Volatile private var attached: GlowView? = null
     @Volatile private var rootRef: WeakReference<ViewGroup> = WeakReference(null)
+    @Volatile private var sheetRef: WeakReference<View> = WeakReference(null)
     @Volatile private var pulseAt: Long = 0L
     @Volatile private var pulsePeak: Float = 0f
     /** Test-only holds and slow motion, driven by the debug broadcast. */
@@ -113,6 +114,7 @@ internal object GlowLayer {
             view.breath = breath
             view.breathing = breathing
             view.cover = BackgroundPulse.coverTexture()
+            view.sheet = sheetRef.get()
             view.aurora = config.aurora
             view.alpha = 1f
             view.invalidate()
@@ -189,6 +191,8 @@ internal object GlowLayer {
     private fun expanded(root: ViewGroup): Boolean {
         val metrics = root.resources.displayMetrics
         val page = maxOf(metrics.widthPixels, metrics.heightPixels)
+        val sheet = sheetRef.get()
+        if (sheet != null) return sheet.height >= page * 0.4f && sheet.isShown
         return root.height >= page * 0.5f
     }
 
@@ -254,6 +258,7 @@ internal object GlowLayer {
         view.translationZ = 0f
         view.alpha = 0f
         rootRef = WeakReference(root)
+        sheetRef = WeakReference(decor.findViewById<View>(idOf(decor, "player_sheet_container")))
         watch(root)
         if (!looping && config().on && expanded(root)) {
             looping = true
@@ -383,6 +388,8 @@ internal object GlowLayer {
         var breathing: Boolean = false
         var cover: Bitmap? = null
         var aurora: Boolean = false
+        /** The sheet that clips this layer: when it is only the mini-player bar, draw nothing. */
+        var sheet: View? = null
         private var curtain: Bitmap? = null
 
         private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
@@ -402,6 +409,7 @@ internal object GlowLayer {
         private var startedAt = 0L
         private var dominant: Int = FALLBACK
         private var dominantKey: Int = 0
+        private var dominantSource: Bitmap? = null
 
         init {
             isClickable = false
@@ -414,11 +422,17 @@ internal object GlowLayer {
             val w = width
             val h = height
             if (w <= 0 || h <= 0) return
-            // Collapsed sheet: this view is only as tall as the mini player bar, and painting
-            // there turns the whole bar into a colour band over the page behind it.
-            val page = maxOf(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
-            if (h < page * 0.4f) return
+            // Collapsed sheet: the layer keeps its full layout size but is clipped to the mini
+            // player bar, so the clip — not this view's own height — is what has to be checked.
+            // What matters is how much of this layer actually reaches the screen: a collapsed
+            // sheet clips it to the mini-player bar even though the view keeps full size.
+            val visible = android.graphics.Rect()
+            if (!getGlobalVisibleRect(visible)) return
+            if (height > 0 && visible.height() < height * 0.35f) return
             if (startedAt == 0L) startedAt = SystemClock.uptimeMillis()
+            // Drawing before the host's cover arrives would flash the neutral fallback and make
+            // the colour jump on the first lyric line; wait for real artwork instead.
+            if (cover == null) return
             val now = SystemClock.uptimeMillis() - startedAt
             ensureMesh(w, h)
             val bitmap = mesh ?: return
@@ -467,7 +481,7 @@ internal object GlowLayer {
             // Very small energy lift: the reference backdrop only breathes, it never flashes.
             val radial = ((u - 0.5f) * (u - 0.5f) + (v - 0.5f) * (v - 0.5f)) / 0.5f
             val shade = 1f - VIGNETTE * radial.coerceIn(0f, 1f)
-            val lifted = base * (1f + 0.05f * breath) * (1f + 0.06f * level) * shade
+            val lifted = base * (1f + 0.02f * breath) * (1f + 0.03f * level) * shade
             hsv[2] = lifted.coerceIn(0f, 1f)
             return Color.HSVToColor(hsv)
         }
@@ -479,7 +493,10 @@ internal object GlowLayer {
          */
         private fun dominantColor(): Int {
             val source = cover ?: return FALLBACK
-            val key = System.identityHashCode(source) xor (source.width shl 16) xor source.height
+            // Key on the artwork's own colour, not on the bitmap instance: the host hands a
+            // fresh bitmap after every resume, which used to produce a slightly different
+            // palette each time the page was reopened.
+            val key = quantizedKey(source)
             if (key == dominantKey && dominant != FALLBACK) return dominant
             var r = 0L
             var g = 0L
@@ -512,6 +529,27 @@ internal object GlowLayer {
             return dominant
         }
 
+        private fun quantizedKey(source: Bitmap): Int {
+            var r = 0L; var g = 0L; var b = 0L; var n = 0
+            val stepX = (source.width / 8).coerceAtLeast(1)
+            val stepY = (source.height / 8).coerceAtLeast(1)
+            var y = 0
+            while (y < source.height) {
+                var x = 0
+                while (x < source.width) {
+                    val p = source.getPixel(x, y)
+                    r += Color.red(p); g += Color.green(p); b += Color.blue(p); n += 1
+                    x += stepX
+                }
+                y += stepY
+            }
+            if (n == 0) return 0
+            val rr = (r / n).toInt() shr 2
+            val gg = (g / n).toInt() shr 2
+            val bb = (b / n).toInt() shr 2
+            return (rr shl 12) or (gg shl 6) or bb
+        }
+
         private fun mix(from: Int, to: Int, amount: Float): Int {
             val keep = 1f - amount
             return Color.rgb(
@@ -533,12 +571,15 @@ internal object GlowLayer {
             val dst = Rect()
             for (index in 0 until AURORA_CURTAINS) {
                 val phase = index * 1.9f
-                val centre = w * (0.5f + 0.40f * sin(t * 0.031f + phase))
-                val sway = w * 0.05f * sin(t * 0.047f + phase * 1.3f)
-                val halfWidth = w * (0.13f + 0.035f * sin(t * 0.023f + phase))
-                val top = h * (0.02f + 0.10f * (0.5f + 0.5f * sin(t * 0.019f + phase * 0.7f)))
-                val alpha = (0.16f + 0.09f * (0.5f + 0.5f * sin(t * 0.041f + phase * 2.3f)) + 0.10f * level)
-                    .coerceIn(0f, 0.38f)
+                // Three incommensurate rates per ribbon: lateral drift, width breathing and a
+                // travelling intensity band, so the shape keeps changing instead of sliding.
+                val centre = w * (0.5f + 0.40f * sin(t * 0.21f + phase))
+                val sway = w * 0.06f * sin(t * 0.37f + phase * 1.3f)
+                val halfWidth = w * (0.13f + 0.06f * sin(t * 0.29f + phase * 0.7f))
+                val travel = 0.5f + 0.5f * sin(t * 0.43f + phase * 2.1f)
+                val top = h * (0.02f + 0.14f * (0.5f + 0.5f * sin(t * 0.17f + phase * 0.7f)))
+                val alpha = (0.14f + 0.10f * (0.5f + 0.5f * sin(t * 0.31f + phase * 2.3f)) + 0.12f * level)
+                    .coerceIn(0f, 0.40f)
                 dst.set(
                     (centre - halfWidth + sway).toInt(),
                     top.toInt(),
@@ -546,7 +587,7 @@ internal object GlowLayer {
                     h,
                 )
                 curtainPaint.colorFilter = android.graphics.PorterDuffColorFilter(
-                    withAlpha(tint, alpha), android.graphics.PorterDuff.Mode.SRC_IN,
+                    withAlpha(tint, alpha * (0.65f + 0.5f * travel)), android.graphics.PorterDuff.Mode.SRC_IN,
                 )
                 canvas.drawBitmap(mask, null, dst, curtainPaint)
             }

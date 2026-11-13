@@ -57,6 +57,7 @@ object AppleMusicHostFactory {
         BackgroundPulse.install(application)
         GlowLayer.install(application)
         PlayerSheetRestore.install(application)
+        MiniPlayerBandFix.install(application)
         PcmProbe.install()
         ArtworkRotationCache.install(application) { true }
         val build = targetBuild(application)

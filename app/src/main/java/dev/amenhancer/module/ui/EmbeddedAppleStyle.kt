@@ -243,6 +243,7 @@ internal fun AppleLinkRow(
     icon: EmbeddedSvgIcon?,
     enabled: Boolean,
     onClick: () -> Unit,
+    trailingText: String? = null,
 ) {
     AppleRow(enabled = enabled, onClick = onClick) {
         if (icon != null) {
@@ -254,6 +255,15 @@ internal fun AppleLinkRow(
             Spacer(Modifier.width(12.dp))
         }
         AppleRowText(title, summary, enabled, Modifier.weight(1f))
+        if (trailingText != null) {
+            Spacer(Modifier.width(8.dp))
+            top.yukonga.miuix.kmp.basic.Text(
+                text = trailingText,
+                color = AppleStyle.secondaryLabel(),
+                fontSize = 15.sp,
+                maxLines = 1,
+            )
+        }
         Spacer(Modifier.width(12.dp))
         EmbeddedSettingsIcon(
             icon = EmbeddedSvgIcon.ChevronRight,

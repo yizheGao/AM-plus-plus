@@ -12,14 +12,21 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -209,3 +216,59 @@ internal fun EmbeddedSettingsHost.dp(activity: Activity, value: Int): Int =
 
 internal fun EmbeddedSettingsHost.matchWidthWrapContent(): LinearLayout.LayoutParams =
     LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+
+/**
+ * Apple-style choice row: the value is shown on the row and a small list drops out of it.
+ * Used for the three-way lyric glow style (off / cover wash / aurora).
+ */
+@Composable
+internal fun EmbeddedSettingDropdown(
+    title: String,
+    summary: String? = null,
+    value: String,
+    options: List<String>,
+    icon: EmbeddedSvgIcon? = null,
+    onSelect: (Int) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        AppleLinkRow(
+            title = title,
+            summary = summary,
+            icon = icon,
+            enabled = true,
+            onClick = { expanded = true },
+            trailingText = value,
+        )
+        if (expanded) {
+            Popup(
+                alignment = Alignment.TopEnd,
+                offset = IntOffset(0, 0),
+                onDismissRequest = { expanded = false },
+            ) {
+                Column(
+                    modifier = Modifier
+                        .width(220.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(AppleStyle.card())
+                        .padding(vertical = 6.dp),
+                ) {
+                    options.forEachIndexed { index, label ->
+                        Text(
+                            text = label,
+                            color = if (label == value) AppleStyle.accent() else AppleStyle.label(),
+                            fontSize = 15.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    expanded = false
+                                    onSelect(index)
+                                }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
